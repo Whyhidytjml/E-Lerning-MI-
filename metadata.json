@@ -1,0 +1,10 @@
+{
+  "name": "MadrasahKu Digital LMS",
+  "description": "Learning Management System interaktif dan ramah anak untuk Madrasah Ibtidaiyah (MI) & SD Islam dengan kurikulum Kemenag/Umum, Tahfiz audio recorder, Mutaba'ah ibadah, dan Parent Dashboard.",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
