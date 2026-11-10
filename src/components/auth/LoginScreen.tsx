@@ -35,46 +35,55 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
+  const studentLow = mockUserAccounts.find(u => u.role === 'siswa_rendah') || mockUserAccounts[0];
+  const studentHigh = mockUserAccounts.find(u => u.role === 'siswa_tinggi') || mockUserAccounts[1];
+  const teacherAccounts = mockUserAccounts.filter(u => u.role === 'guru');
+  const parentUser = mockUserAccounts.find(u => u.role === 'orang_tua') || mockUserAccounts[mockUserAccounts.length - 2];
+  const adminUser = mockUserAccounts.find(u => u.role === 'admin') || mockUserAccounts[mockUserAccounts.length - 1];
+
+  const [selectedTeacherId, setSelectedTeacherId] = useState<string>(teacherAccounts[0]?.id || 'usr_guru_01');
+  const activeSelectedTeacher = teacherAccounts.find(t => t.id === selectedTeacherId) || teacherAccounts[0];
+
   const roleOptions: Array<{ role: Role; label: string; desc: string; icon: string; user: UserAccount; usernameHint: string }> = [
     {
       role: 'siswa_rendah',
       label: 'Siswa Rendah (Kls 1–3)',
-      desc: 'Ahmad Fauzi Mubarak · NIS: MI240201',
-      icon: '👦🏻',
-      user: mockUserAccounts[0],
-      usernameHint: 'ahmad.fauzi'
+      desc: `${studentLow.name} · ${studentLow.identifier}`,
+      icon: studentLow.avatar,
+      user: studentLow,
+      usernameHint: studentLow.username
     },
     {
       role: 'siswa_tinggi',
       label: 'Siswa Tinggi (Kls 4–6)',
-      desc: 'Fatimah Az-Zahra · NIS: MI210512',
-      icon: '👧🏻',
-      user: mockUserAccounts[1],
-      usernameHint: 'fatimah.zahra'
+      desc: `${studentHigh.name} · ${studentHigh.identifier}`,
+      icon: studentHigh.avatar,
+      user: studentHigh,
+      usernameHint: studentHigh.username
     },
     {
       role: 'guru',
-      label: 'Ustadz / Guru / Wali Kelas',
-      desc: 'Ustadz Ridwan, S.Pd.I · NIP: 198507122010011005',
-      icon: '👳🏻‍♂️',
-      user: mockUserAccounts[2],
-      usernameHint: 'ustadz.ridwan'
+      label: 'Ustadz / Guru (10 Guru Mapel & Rombel)',
+      desc: `${activeSelectedTeacher.name} · ${activeSelectedTeacher.title}`,
+      icon: activeSelectedTeacher.avatar,
+      user: activeSelectedTeacher,
+      usernameHint: activeSelectedTeacher.username
     },
     {
       role: 'orang_tua',
       label: 'Orang Tua / Wali Santri',
-      desc: 'Bunda Aisyah · Wali Ananda Ahmad',
-      icon: '🧕🏻',
-      user: mockUserAccounts[3],
-      usernameHint: 'bunda.aisyah'
+      desc: `${parentUser.name} · ${parentUser.title}`,
+      icon: parentUser.avatar,
+      user: parentUser,
+      usernameHint: parentUser.username
     },
     {
       role: 'admin',
       label: 'Administrator / Kepala Madrasah',
-      desc: 'Drs. KH. Ahmad Mansur, M.Pd.I',
-      icon: '🏫',
-      user: mockUserAccounts[4],
-      usernameHint: 'kepala.madrasah'
+      desc: `${adminUser.name} · ${adminUser.title}`,
+      icon: adminUser.avatar,
+      user: adminUser,
+      usernameHint: adminUser.username
     }
   ];
 
@@ -158,10 +167,10 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
             <BookOpen className="w-7 h-7" />
           </div>
           <h1 className="text-2xl sm:text-3xl font-bold font-serif text-emerald-950">
-            MadrasahKu Digital LMS
+            LMS MI Darul Ulum Sidareja
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 mt-1">
-            Portal Pembelajaran Terintegrasi Siswa, Guru, Orang Tua & RDM
+            Madrasah Ibtidaiyah Darul Ulum Sidareja · Portal Pembelajaran & Pengasuhan Terpadu
           </p>
         </div>
 
@@ -309,31 +318,52 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
 
             <div className="space-y-2">
               {roleOptions.map((item) => (
-                <button
-                  key={item.role}
-                  type="button"
-                  onClick={() => handleDirectLogin(item.user)}
-                  className="w-full p-3.5 rounded-2xl border border-slate-200 hover:border-emerald-400 bg-white hover:bg-emerald-50/50 transition-all cursor-pointer flex items-center justify-between text-left group shadow-2xs hover:shadow-sm"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-11 h-11 rounded-xl bg-slate-100 flex items-center justify-center text-2xl group-hover:scale-105 transition-transform shrink-0">
-                      {item.icon}
-                    </div>
-                    <div>
-                      <div className="font-bold text-slate-900 text-xs sm:text-sm group-hover:text-emerald-900 transition-colors">
-                        {item.label}
+                <div key={item.role} className="space-y-1.5">
+                  <button
+                    type="button"
+                    onClick={() => handleDirectLogin(item.user)}
+                    className="w-full p-3.5 rounded-2xl border border-slate-200 hover:border-emerald-400 bg-white hover:bg-emerald-50/50 transition-all cursor-pointer flex items-center justify-between text-left group shadow-2xs hover:shadow-sm"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-11 h-11 rounded-xl bg-slate-100 flex items-center justify-center text-2xl group-hover:scale-105 transition-transform shrink-0">
+                        {item.icon}
                       </div>
-                      <div className="text-[11px] text-slate-500 font-medium">
-                        {item.desc}
+                      <div>
+                        <div className="font-bold text-slate-900 text-xs sm:text-sm group-hover:text-emerald-900 transition-colors">
+                          {item.label}
+                        </div>
+                        <div className="text-[11px] text-slate-500 font-medium">
+                          {item.desc}
+                        </div>
                       </div>
                     </div>
-                  </div>
 
-                  <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-700 group-hover:translate-x-1 transition-transform shrink-0">
-                    <span>Masuk</span>
-                    <ArrowRight className="w-4 h-4" />
-                  </div>
-                </button>
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-700 group-hover:translate-x-1 transition-transform shrink-0">
+                      <span>Masuk</span>
+                      <ArrowRight className="w-4 h-4" />
+                    </div>
+                  </button>
+
+                  {item.role === 'guru' && (
+                    <div className="px-3 py-2 bg-blue-50/80 rounded-xl border border-blue-200/60 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <span className="text-[11px] font-bold text-blue-900">Pilih Guru Sesuai Pemetaan (10 Guru):</span>
+                      <select
+                        value={selectedTeacherId}
+                        onChange={(e) => {
+                          e.stopPropagation();
+                          setSelectedTeacherId(e.target.value);
+                        }}
+                        className="bg-white border border-blue-300 text-blue-950 rounded-lg px-2 py-1 text-xs font-semibold cursor-pointer focus:outline-hidden focus:ring-1 focus:ring-blue-500"
+                      >
+                        {teacherAccounts.map(tch => (
+                          <option key={tch.id} value={tch.id}>
+                            {tch.avatar} {tch.name} ({tch.title})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                </div>
               ))}
             </div>
           </div>

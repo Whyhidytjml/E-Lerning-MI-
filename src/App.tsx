@@ -180,99 +180,51 @@ export default function App() {
 
         {/* ======================= ROLE 3: GURU ======================= */}
         {currentRole === 'guru' && (
-          <>
-            {activeTab === 'beranda' && (
-              <TeacherDashboard 
-                initialTab="presensi" 
-                messages={liaisonMessages}
-                onSendMessage={handleSendLiaisonMessage}
-              />
-            )}
-            {activeTab === 'grading_center' && (
-              <TeacherDashboard 
-                initialTab="grading_center" 
-                messages={liaisonMessages}
-                onSendMessage={handleSendLiaisonMessage}
-              />
-            )}
-            {activeTab === 'kelola_materi' && (
-              <TeacherDashboard 
-                initialTab="kelola_materi" 
-                messages={liaisonMessages}
-                onSendMessage={handleSendLiaisonMessage}
-              />
-            )}
-            {activeTab === 'bank_soal' && (
-              <TeacherDashboard 
-                initialTab="bank_soal" 
-                messages={liaisonMessages}
-                onSendMessage={handleSendLiaisonMessage}
-              />
-            )}
-            {activeTab === 'penghubung' && (
-              <TeacherDashboard 
-                initialTab="penghubung" 
-                messages={liaisonMessages}
-                onSendMessage={handleSendLiaisonMessage}
-              />
-            )}
-          </>
+          <TeacherDashboard 
+            initialTab={
+              activeTab === 'beranda' ? 'presensi' :
+              activeTab === 'grading_center' ? 'grading_center' :
+              activeTab === 'kelola_materi' ? 'kelola_materi' :
+              activeTab === 'bank_soal' ? 'bank_soal' :
+              activeTab === 'penghubung' ? 'penghubung' : 'presensi'
+            }
+            messages={liaisonMessages}
+            onSendMessage={handleSendLiaisonMessage}
+            currentUser={currentUser}
+            onSwitchTeacher={(newTeacher) => {
+              setCurrentUser(newTeacher);
+              try {
+                localStorage.setItem('madrasahku_current_user', JSON.stringify(newTeacher));
+              } catch (e) {}
+            }}
+          />
         )}
 
         {/* ======================= ROLE 4: ORANG TUA ======================= */}
         {currentRole === 'orang_tua' && (
-          <>
-            {activeTab === 'beranda' && (
-              <ParentDashboard
-                initialTab="beranda"
-                onNavigateTab={(tab) => setActiveTab(tab)}
-                messages={liaisonMessages}
-                onSendMessage={handleSendLiaisonMessage}
-              />
-            )}
-            {activeTab === 'status_tugas' && (
-              <ParentDashboard
-                initialTab="status_tugas"
-                onNavigateTab={(tab) => setActiveTab(tab)}
-                messages={liaisonMessages}
-                onSendMessage={handleSendLiaisonMessage}
-              />
-            )}
-            {activeTab === 'rekap_readonly' && (
-              <ParentDashboard
-                initialTab="rekap_readonly"
-                onNavigateTab={(tab) => setActiveTab(tab)}
-                messages={liaisonMessages}
-                onSendMessage={handleSendLiaisonMessage}
-              />
-            )}
-            {activeTab === 'penghubung' && (
-              <ParentDashboard
-                initialTab="penghubung"
-                onNavigateTab={(tab) => setActiveTab(tab)}
-                messages={liaisonMessages}
-                onSendMessage={handleSendLiaisonMessage}
-              />
-            )}
-          </>
+          <ParentDashboard
+            initialTab={
+              activeTab === 'beranda' ? 'beranda' :
+              activeTab === 'status_tugas' ? 'status_tugas' :
+              activeTab === 'rekap_readonly' ? 'rekap_readonly' :
+              activeTab === 'penghubung' ? 'penghubung' : 'beranda'
+            }
+            onNavigateTab={(tab) => setActiveTab(tab)}
+            messages={liaisonMessages}
+            onSendMessage={handleSendLiaisonMessage}
+          />
         )}
 
         {/* ======================= ROLE 5: ADMINISTRATOR ======================= */}
         {currentRole === 'admin' && (
-          <>
-            {activeTab === 'beranda' && (
-              <AdminDashboard initialTab="rekap" />
-            )}
-            {activeTab === 'admin_pengguna' && (
-              <AdminDashboard initialTab="admin_pengguna" />
-            )}
-            {activeTab === 'admin_pemetaan' && (
-              <AdminDashboard initialTab="admin_pemetaan" />
-            )}
-            {activeTab === 'admin_rdm' && (
-              <AdminDashboard initialTab="admin_rdm" />
-            )}
-          </>
+          <AdminDashboard 
+            initialTab={
+              activeTab === 'beranda' ? 'rekap' :
+              activeTab === 'admin_pengguna' ? 'admin_pengguna' :
+              activeTab === 'admin_pemetaan' ? 'admin_pemetaan' :
+              activeTab === 'admin_rdm' ? 'admin_rdm' : 'rekap'
+            } 
+          />
         )}
 
       </main>
@@ -281,7 +233,7 @@ export default function App() {
       <footer className="mt-auto border-t border-emerald-100 bg-white py-6">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500">
           <div className="flex items-center gap-2">
-            <span className="font-bold text-emerald-950 font-serif">MadrasahKu Digital LMS</span>
+            <span className="font-bold text-emerald-950 font-serif">LMS MI Darul Ulum Sidareja</span>
             <span>·</span>
             <span>Sistem Pembelajaran Terintegrasi RDM Kemenag</span>
           </div>

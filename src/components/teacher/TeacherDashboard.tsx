@@ -5,11 +5,15 @@ import {
   mockMutabaahToday, 
   mockAssignments,
   mockLearningMaterials,
-  mockLiaisonMessages
+  mockLiaisonMessages,
+  mockUserAccounts
 } from '../../data/mockData';
-import { AttendanceRecord, TahfizSubmission, MutabaahEntry, Assignment, LearningMaterial, LiaisonMessage } from '../../types/lms';
+import { AttendanceRecord, TahfizSubmission, MutabaahEntry, Assignment, LearningMaterial, LiaisonMessage, Subject, UserAccount } from '../../types/lms';
 import { soundEngine } from '../../utils/audio';
 import confetti from 'canvas-confetti';
+import { getStoredMaterials, saveStoredMaterials, MATERIALS_UPDATED_EVENT } from '../../utils/materialsStorage';
+import { getStoredSubjects, SUBJECTS_UPDATED_EVENT } from '../../utils/subjectsStorage';
+import { MaterialReaderModal } from '../common/MaterialReaderModal';
 import { 
   UserCheck, 
   Users, 
@@ -37,29 +41,76 @@ import {
   Edit3,
   MessageSquare,
   Send,
-  Share2
+  Share2,
+  Trash2,
+  Save
 } from 'lucide-react';
 
 interface TeacherDashboardProps {
   initialTab?: 'presensi' | 'grading_center' | 'kelola_materi' | 'bank_soal' | 'penghubung';
   messages?: LiaisonMessage[];
   onSendMessage?: (msg: LiaisonMessage) => void;
+  currentUser?: UserAccount;
+  onSwitchTeacher?: (teacher: UserAccount) => void;
 }
 
 export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ 
   initialTab = 'presensi',
   messages: externalMessages,
-  onSendMessage: externalOnSendMessage
+  onSendMessage: externalOnSendMessage,
+  currentUser,
+  onSwitchTeacher
 }) => {
+  const activeTeacherName = currentUser?.name || "Ustadz Ridwan, S.Pd.I";
+  const activeTeacherTitle = currentUser?.title || "Wali Kelas 2 Ali bin Abi Thalib · Guru Al-Qur'an Hadis & Koordinator Tahfiz Juz 30";
+  const activeTeacherAvatar = currentUser?.avatar || "👳🏻‍♂️";
+  const teacherAccounts = mockUserAccounts.filter(u => u.role === 'guru');
+
   const [activeTab, setActiveTab] = useState<'presensi' | 'grading_center' | 'kelola_materi' | 'bank_soal' | 'penghubung'>(initialTab);
   
+  // Sync activeTab when initialTab changes from parent Header
+  useEffect(() => {
+    if (initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab]);
+
   // Grading Center Subtab: 1. Tugas Siswa, 2. Validasi Mutabaah, 3. Setoran Tahfiz
   const [gradingSubTab, setGradingSubTab] = useState<'tugas' | 'mutabaah' | 'tahfiz'>('tugas');
 
   const [roster, setRoster] = useState<AttendanceRecord[]>(mockClassRoster);
   const [tahfizList, setTahfizList] = useState<TahfizSubmission[]>(mockTahfizSubmissions);
   const [assignments, setAssignments] = useState<Assignment[]>(mockAssignments);
-  const [materials, setMaterials] = useState<LearningMaterial[]>(mockLearningMaterials);
+
+  // Persistent Learning Materials stored in localStorage
+  const [materials, setMaterials] = useState<LearningMaterial[]>(() => getStoredMaterials());
+  const [previewMaterial, setPreviewMaterial] = useState<LearningMaterial | null>(null);
+
+  // Persistent Subjects synchronized from Admin
+  const [subjects, setSubjects] = useState<Subject[]>(() => getStoredSubjects());
+
+  // Sync materials & subjects across browser tabs and same-window events
+  useEffect(() => {
+    const handleSync = () => {
+      setMaterials(getStoredMaterials());
+    };
+    const handleSubjectsSync = () => {
+      setSubjects(getStoredSubjects());
+    };
+    window.addEventListener('storage', handleSync);
+    window.addEventListener(MATERIALS_UPDATED_EVENT, handleSync);
+    window.addEventListener('storage', (e) => {
+      if (e.key === 'madrasahku_subjects') {
+        setSubjects(getStoredSubjects());
+      }
+    });
+    window.addEventListener(SUBJECTS_UPDATED_EVENT, handleSubjectsSync);
+    return () => {
+      window.removeEventListener('storage', handleSync);
+      window.removeEventListener(MATERIALS_UPDATED_EVENT, handleSync);
+      window.removeEventListener(SUBJECTS_UPDATED_EVENT, handleSubjectsSync);
+    };
+  }, []);
 
   // Selected for evaluation
   const [selectedSubmission, setSelectedSubmission] = useState<TahfizSubmission | null>(null);
@@ -78,18 +129,21 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   const [evalNotes, setEvalNotes] = useState<string>('Qalqalah kubra pada huruf Dal sangat mantap dan jelas.');
   const [evalSuccess, setEvalSuccess] = useState(false);
 
-  // New Material Modal
+  // New Material Modal State
   const [newMaterialModal, setNewMaterialModal] = useState(false);
   const [matTitle, setMatTitle] = useState('');
   const [matSubject, setMatSubject] = useState("Al-Qur'an Hadis");
   const [matCategory, setMatCategory] = useState<'kemenag' | 'umum'>('kemenag');
+  const [matGrade, setMatGrade] = useState<number>(0); // 0 = Semua Tingkat Kelas (1-6)
   const [matFormat, setMatFormat] = useState<LearningMaterial['format']>('Video');
-  const [matDate, setMatDate] = useState('2026-11-06');
+  const [matStatus, setMatStatus] = useState<'Diterbitkan' | 'Terjadwal'>('Diterbitkan');
+  const [matDate, setMatDate] = useState('2026-11-07');
   const [matTime, setMatTime] = useState('07:30 WIB');
   const [matDesc, setMatDesc] = useState('');
   const [uploadedDocName, setUploadedDocName] = useState<string | null>(null);
   const [uploadedDocSize, setUploadedDocSize] = useState<string | null>(null);
   const teacherFileInputRef = useRef<HTMLInputElement>(null);
+  const [materialSuccessToast, setMaterialSuccessToast] = useState(false);
 
   // Liaison Messages State (Buku Penghubung)
   const [liaisonMessages, setLiaisonMessages] = useState<LiaisonMessage[]>(externalMessages || mockLiaisonMessages);
@@ -118,7 +172,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
       id: `msg_tch_${Date.now()}`,
       studentId: 'std_01',
       senderRole: 'guru',
-      senderName: 'Ustadz Ridwan, S.Pd.I',
+      senderName: activeTeacherName,
       timestamp: new Date().toISOString().replace('T', ' ').substring(0, 16),
       tag: teacherReplyTag,
       content: teacherReplyText.trim(),
@@ -219,7 +273,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
     setMutabaahEntry(prev => ({
       ...prev,
       teacherValidated: true,
-      teacherValidatorName: "Ustadz Ridwan, S.Pd.I",
+      teacherValidatorName: activeTeacherName,
       teacherValidatedAt: new Date().toISOString().replace('T', ' ').substring(0, 16)
     }));
   };
@@ -237,7 +291,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
           predicate: evalPredicate,
           score: evalScore,
           tajwidNotes: evalNotes,
-          teacherName: "Ustadz Ridwan, S.Pd.I",
+          teacherName: activeTeacherName,
           evaluatedAt: new Date().toISOString().replace('T', ' ').substring(0, 16)
         };
       }
@@ -257,26 +311,74 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
     soundEngine.playSuccess();
     const newM: LearningMaterial = {
       id: `mat_${Date.now()}`,
-      title: matTitle,
-      subjectId: 'sbj_custom',
+      title: matTitle.trim(),
+      subjectId: `sbj_${matSubject.toLowerCase().replace(/[^a-z0-9]/g, '_')}`,
       subjectName: matSubject,
       category: matCategory,
-      grade: 2,
+      grade: matGrade,
       format: matFormat,
-      scheduledDate: matDate,
-      scheduledTime: matTime,
-      status: 'Terjadwal',
+      scheduledDate: matDate || new Date().toISOString().split('T')[0],
+      scheduledTime: matTime || '07:30 WIB',
+      status: matStatus,
       description: uploadedDocName 
         ? `${matDesc || 'Materi pembelajaran terintegrasi kurikulum madrasah.'} (Lampiran: ${uploadedDocName} - ${uploadedDocSize || '2.4 MB'})`
         : (matDesc || 'Materi pembelajaran terintegrasi kurikulum madrasah.'),
-      teacherName: 'Ustadz Ridwan, S.Pd.I'
+      teacherName: activeTeacherName,
+      documentFileName: uploadedDocName || (matFormat === 'Dokumen PDF' ? `${matTitle.trim().replace(/\s+/g, '_')}.pdf` : undefined),
+      documentFileSize: uploadedDocSize || '2.4 MB',
+      contentBody: matDesc || 'Silakan pelajari bab materi ini dan catat poin-poin penting untuk persiapan kuis dan tugas madrasah.',
+      keyTakeaways: [
+        `Materi ajar resmi ${matSubject} Kelas ${matGrade}.`,
+        'Dapat diakses langsung di aplikasi tanpa harus mengunduh berkas.',
+        'Mengacu pada kurikulum terpadu Madrasah Ibtidaiyah.'
+      ],
+      pages: [
+        {
+          pageNumber: 1,
+          heading: `Pengantar Materi: ${matTitle.trim()}`,
+          subheading: `Mata Pelajaran ${matSubject} · Kelas ${matGrade}`,
+          paragraphs: [
+            matDesc || 'Materi ajar resmi dari guru pengampu telah diterbitkan dan dapat langsung diakses oleh santri secara online.',
+            'Pelajari setiap pembahasan dengan seksama dan catat kaidah-kaidah penting di buku tulis madrasah ananda masing-masing.'
+          ],
+          keyPoints: [
+            'Dapat diakses langsung oleh siswa secara online tanpa perlu unduh.',
+            'Tersedia tombol suara panduan untuk mendengarkan isi materi.'
+          ],
+          exercisePrompt: `Apa tujuan pembelajaran dari materi "${matTitle.trim()}"?`,
+          exerciseAnswer: 'Memperkuat pemahaman materi ajar santri dan membangun akhlak mulia sesuai nilai-nilai madrasah.'
+        }
+      ]
     };
-    setMaterials([newM, ...materials]);
+    
+    const updated = [newM, ...materials];
+    setMaterials(updated);
+    saveStoredMaterials(updated);
+
     setNewMaterialModal(false);
     setMatTitle('');
     setMatDesc('');
     setUploadedDocName(null);
     setUploadedDocSize(null);
+    setMaterialSuccessToast(true);
+    setTimeout(() => setMaterialSuccessToast(false), 3500);
+  };
+
+  const handleDeleteMaterial = (id: string, title: string) => {
+    soundEngine.playClick();
+    if (window.confirm(`Hapus materi "${title}"?`)) {
+      const updated = materials.filter(m => m.id !== id);
+      setMaterials(updated);
+      saveStoredMaterials(updated);
+    }
+  };
+
+  const handleResetMaterials = () => {
+    soundEngine.playClick();
+    if (window.confirm('Kembalikan modul & materi ajar ke data bawaan madrasah?')) {
+      setMaterials(mockLearningMaterials);
+      saveStoredMaterials(mockLearningMaterials);
+    }
   };
 
   return (
@@ -292,17 +394,47 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
       {/* Teacher Profile Banner */}
       <div className="bg-gradient-to-r from-blue-900 via-slate-900 to-indigo-950 text-white rounded-3xl p-6 sm:p-8 shadow-sm relative overflow-hidden">
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 relative z-10">
-          <div>
+          <div className="flex-1">
             <div className="inline-flex items-center gap-2 text-xs font-bold tracking-wider text-blue-300 uppercase mb-2">
               <UserCheck className="w-4 h-4" />
               <span>Hak Akses Guru / Pendidik Madrasah</span>
             </div>
-            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight font-serif text-white">
-              Ruang Kerja Ustadz Ridwan, S.Pd.I
-            </h1>
-            <p className="text-xs sm:text-sm text-blue-100/80 mt-1 max-w-xl">
-              Wali Kelas 2 Ali bin Abi Thalib · Guru Al-Qur'an Hadis & Koordinator Tahfiz Juz 30
-            </p>
+            <div className="flex items-center gap-3.5">
+              <span className="w-12 h-12 rounded-2xl bg-white/10 border border-white/20 flex items-center justify-center text-3xl shrink-0 shadow-inner">
+                {activeTeacherAvatar}
+              </span>
+              <div>
+                <h1 className="text-2xl sm:text-3xl font-bold tracking-tight font-serif text-white">
+                  Ruang Kerja {activeTeacherName}
+                </h1>
+                <p className="text-xs sm:text-sm text-blue-100/80 mt-0.5 max-w-xl">
+                  {activeTeacherTitle}
+                </p>
+              </div>
+            </div>
+
+            {onSwitchTeacher && (
+              <div className="mt-4 flex flex-wrap items-center gap-2 pt-3 border-t border-white/10">
+                <span className="text-xs text-blue-200 font-medium">Akun Guru Aktif (Sesuai Pemetaan):</span>
+                <select
+                  value={currentUser?.id || 'usr_guru_01'}
+                  onChange={(e) => {
+                    const targetUser = teacherAccounts.find(u => u.id === e.target.value);
+                    if (targetUser) {
+                      soundEngine.playReward();
+                      onSwitchTeacher(targetUser);
+                    }
+                  }}
+                  className="bg-blue-950/90 border border-blue-400/50 text-white rounded-xl px-3 py-1.5 text-xs cursor-pointer focus:outline-hidden focus:ring-1 focus:ring-blue-400 font-semibold"
+                >
+                  {teacherAccounts.map(tch => (
+                    <option key={tch.id} value={tch.id} className="bg-slate-900 text-white">
+                      {tch.avatar} {tch.name} ({tch.title})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
 
           {/* Quick Metrics */}
@@ -675,7 +807,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                   {isValidated ? (
                     <span className="px-3 py-1 rounded-xl bg-emerald-100 text-emerald-900 border border-emerald-300 text-xs font-bold flex items-center gap-1.5">
                       <CheckCircle2 className="w-4 h-4 text-emerald-700" />
-                      <span>Telah Divalidasi oleh Ustadz Ridwan</span>
+                      <span>Telah Divalidasi oleh {mutabaahEntry.teacherValidatorName || activeTeacherName}</span>
                     </span>
                   ) : (
                     <button
@@ -854,6 +986,13 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
             </div>
             <div className="flex items-center gap-2">
               <button
+                onClick={handleResetMaterials}
+                title="Reset materi ke default madrasah"
+                className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold flex items-center gap-1.5 cursor-pointer border border-slate-200"
+              >
+                <span>Reset Default</span>
+              </button>
+              <button
                 onClick={() => {
                   setNewMaterialModal(true);
                   setTimeout(() => handleTriggerTeacherFile(), 150);
@@ -873,9 +1012,22 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
             </div>
           </div>
 
+          {/* Persistence status banner */}
+          <div className="flex items-center justify-between bg-blue-50/70 border border-blue-200/80 rounded-xl px-4 py-2.5 text-xs text-blue-950">
+            <div className="flex items-center gap-2">
+              <Save className="w-4 h-4 text-blue-700 shrink-0" />
+              <span>
+                <strong>Penyimpanan Otomatis Aktif:</strong> Materi yang Anda unggah otomatis tersimpan di penyimpanan lokal dan <strong>tidak akan hilang saat Anda berganti menu ataupun me-refresh halaman</strong>.
+              </span>
+            </div>
+            <span className="font-mono text-[11px] text-blue-800 font-bold shrink-0">
+              {materials.length} Materi Terdaftar
+            </span>
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
             {materials.map((mat) => (
-              <div key={mat.id} className="p-5 rounded-2xl border border-slate-200 hover:border-emerald-300 transition-all flex flex-col justify-between">
+              <div key={mat.id} className="p-5 rounded-2xl border border-slate-200 hover:border-emerald-300 transition-all flex flex-col justify-between bg-white shadow-2xs">
                 <div>
                   <div className="flex items-center justify-between text-xs mb-2">
                     <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
@@ -893,12 +1045,28 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                   <p className="text-xs text-slate-600 leading-relaxed mb-3">{mat.description}</p>
                 </div>
 
-                <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
-                  <div className="flex items-center gap-1">
-                    <Clock className="w-3.5 h-3.5 text-slate-400" />
-                    <span>Rilis: {mat.scheduledDate} ({mat.scheduledTime})</span>
+                <div className="pt-3 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-slate-500">
+                  <button
+                    onClick={() => {
+                      soundEngine.playSuccess();
+                      setPreviewMaterial(mat);
+                    }}
+                    className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-lg font-bold flex items-center gap-1.5 cursor-pointer transition-colors self-start"
+                  >
+                    <BookOpen className="w-3.5 h-3.5" />
+                    <span>Lihat Tampilan Siswa (Online)</span>
+                  </button>
+
+                  <div className="flex items-center justify-between sm:justify-end gap-2 w-full sm:w-auto">
+                    <span className="font-semibold text-emerald-700">{mat.format}</span>
+                    <button
+                      onClick={() => handleDeleteMaterial(mat.id, mat.title)}
+                      title={`Hapus materi "${mat.title}"`}
+                      className="p-1 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-lg transition-colors cursor-pointer"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
                   </div>
-                  <span className="font-semibold text-emerald-700">{mat.format}</span>
                 </div>
               </div>
             ))}
@@ -970,7 +1138,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
               <button
                 onClick={() => {
                   soundEngine.playSuccess();
-                  const waText = `*LAPORAN WALI KELAS MADRASAH IBTIDAIYAH*\nDari: Ustadz Ridwan, S.Pd.I (Wali Kelas 2)\nKepada: Bunda Aisyah (Wali Santri Ahmad Fauzi Mubarak)\n\nAssalamu'alaikum Bunda, kami menginformasikan ananda Ahmad hari ini hadir tepat waktu, menuntaskan shalat dhuha dan setoran hafalan Surah Al-Kautsar dengan predikat Mumtaz (96). Terima kasih atas kerja samanya.`;
+                  const waText = `*LAPORAN PENDIDIK MI DARUL ULUM SIDAREJA*\nDari: ${activeTeacherName} (${activeTeacherTitle})\nKepada: Bunda Aisyah (Wali Santri Ahmad Fauzi Mubarak)\n\nAssalamu'alaikum Bunda, kami menginformasikan ananda Ahmad hari ini hadir tepat waktu, menuntaskan shalat dhuha dan setoran hafalan Surah Al-Kautsar dengan predikat Mumtaz (96). Terima kasih atas kerja samanya.`;
                   window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(waText)}`, '_blank');
                 }}
                 className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-xs transition-all"
@@ -1131,7 +1299,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                 <button
                   onClick={() => {
                     soundEngine.playSuccess();
-                    const text = `*PESAN WALI KELAS MADRASAH IBTIDAIYAH*\nDari: Ustadz Ridwan, S.Pd.I\nKepada: Bunda Aisyah (Wali Ahmad Fauzi Mubarak)\nTopik: [${teacherReplyTag}]\n\n${teacherReplyText}`;
+                    const text = `*PESAN PENDIDIK MI DARUL ULUM SIDAREJA*\nDari: ${activeTeacherName}\nKepada: Bunda Aisyah (Wali Ahmad Fauzi Mubarak)\nTopik: [${teacherReplyTag}]\n\n${teacherReplyText}`;
                     window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, '_blank');
                   }}
                   className="text-emerald-700 hover:text-emerald-800 font-bold flex items-center gap-1 cursor-pointer hover:underline text-[11px]"
@@ -1230,19 +1398,20 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                   <select
                     value={matSubject}
                     onChange={(e) => {
-                      setMatSubject(e.target.value);
-                      const isKemenag = ['Al-Qur\'an Hadis', 'Aqidah Akhlak', 'Fikih Ibadah', 'Sejarah Kebudayaan Islam', 'Bahasa Arab'].includes(e.target.value);
-                      setMatCategory(isKemenag ? 'kemenag' : 'umum');
+                      const selectedVal = e.target.value;
+                      setMatSubject(selectedVal);
+                      const matched = subjects.find(s => s.name === selectedVal);
+                      if (matched) {
+                        setMatCategory(matched.category);
+                      }
                     }}
                     className="w-full px-3 py-2 rounded-xl border border-slate-200"
                   >
-                    <option>Al-Qur'an Hadis</option>
-                    <option>Aqidah Akhlak</option>
-                    <option>Fikih Ibadah</option>
-                    <option>Sejarah Kebudayaan Islam</option>
-                    <option>Bahasa Arab</option>
-                    <option>Matematika</option>
-                    <option>IPAS</option>
+                    {subjects.map((sub) => (
+                      <option key={sub.id} value={sub.name}>
+                        {sub.name} ({sub.category === 'kemenag' ? 'Kemenag' : 'Umum'})
+                      </option>
+                    ))}
                   </select>
                 </div>
 
@@ -1257,6 +1426,37 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                     <option value="Dokumen PDF">Dokumen PDF / Buku Siswa</option>
                     <option value="Audio MP3">Audio Murattal MP3</option>
                     <option value="Slide Interaktif">Slide Presentasi</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Target Tingkat Kelas:</label>
+                  <select
+                    value={matGrade}
+                    onChange={(e) => setMatGrade(Number(e.target.value))}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200"
+                  >
+                    <option value={0}>Semua Kelas (Kelas 1–6)</option>
+                    <option value={1}>Kelas 1 (Fase A)</option>
+                    <option value={2}>Kelas 2 (Fase A)</option>
+                    <option value={3}>Kelas 3 (Fase B)</option>
+                    <option value={4}>Kelas 4 (Fase B)</option>
+                    <option value={5}>Kelas 5 (Fase C)</option>
+                    <option value={6}>Kelas 6 (Fase C)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Status Publikasi:</label>
+                  <select
+                    value={matStatus}
+                    onChange={(e) => setMatStatus(e.target.value as any)}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200"
+                  >
+                    <option value="Diterbitkan">Diterbitkan (Langsung Aktif untuk Siswa)</option>
+                    <option value="Terjadwal">Terjadwal (Sesuai Jam Rilis)</option>
                   </select>
                 </div>
               </div>
@@ -1312,6 +1512,28 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
             </form>
           </div>
         </div>
+      )}
+
+      {/* Toast Notifikasi Sukses Unggah Materi */}
+      {materialSuccessToast && (
+        <div className="fixed bottom-6 right-6 z-50 bg-slate-950 text-white px-5 py-3 rounded-2xl shadow-xl border border-blue-500/40 flex items-center gap-3 animate-in fade-in slide-in-from-bottom-3 text-xs">
+          <div className="w-7 h-7 rounded-full bg-blue-500/20 text-blue-300 flex items-center justify-center">
+            <CheckCircle2 className="w-4 h-4 text-blue-400" />
+          </div>
+          <div>
+            <div className="font-bold">Materi Berhasil Dijadwalkan & Disimpan!</div>
+            <div className="text-blue-200 text-[11px]">Materi tersimpan otomatis dan tidak akan hilang saat berpindah menu.</div>
+          </div>
+        </div>
+      )}
+
+      {/* Pratinjau Tampilan Siswa Langsung (Online Reader Modal) */}
+      {previewMaterial && (
+        <MaterialReaderModal
+          material={previewMaterial}
+          isOpen={Boolean(previewMaterial)}
+          onClose={() => setPreviewMaterial(null)}
+        />
       )}
     </div>
   );

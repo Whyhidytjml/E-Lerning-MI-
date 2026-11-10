@@ -68,6 +68,13 @@ export const ParentDashboard: React.FC<ParentDashboardProps> = ({
     }
   }, [externalMessages]);
 
+  // Sync activeTab when initialTab changes from parent Header
+  React.useEffect(() => {
+    if (initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab]);
+
   React.useEffect(() => {
     if (activeTab === 'penghubung') {
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });

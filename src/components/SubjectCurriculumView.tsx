@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
-import { mockSubjects } from '../data/mockData';
-import { Subject, SubjectCategory } from '../types/lms';
+import React, { useState, useEffect } from 'react';
+import { Subject, SubjectCategory, LearningMaterial } from '../types/lms';
+import { getStoredMaterials, MATERIALS_UPDATED_EVENT } from '../utils/materialsStorage';
+import { getStoredSubjects, SUBJECTS_UPDATED_EVENT } from '../utils/subjectsStorage';
+import { MaterialReaderModal } from './common/MaterialReaderModal';
 import { 
   BookOpen, 
   Sparkles, 
@@ -17,14 +19,55 @@ import {
   Clock,
   User,
   CheckCircle2,
-  X
+  X,
+  Eye,
+  Download,
+  Film,
+  Music,
+  FileCheck2,
+  FolderOpen,
+  Calendar,
+  Layers
 } from 'lucide-react';
 import { soundEngine } from '../utils/audio';
+import confetti from 'canvas-confetti';
 
 export const SubjectCurriculumView: React.FC = () => {
   const [activeCategory, setActiveCategory] = useState<SubjectCategory | 'semua'>('semua');
   const [gradeFilter, setGradeFilter] = useState<number | 'semua'>('semua');
   const [selectedSubject, setSelectedSubject] = useState<Subject | null>(null);
+
+  // Synchronized subjects from Admin Master Table
+  const [subjects, setSubjects] = useState<Subject[]>(() => getStoredSubjects());
+
+  // Synchronized materials directly from teacher's uploads
+  const [materials, setMaterials] = useState<LearningMaterial[]>(() => getStoredMaterials());
+  const [selectedModule, setSelectedModule] = useState<LearningMaterial | null>(null);
+
+  useEffect(() => {
+    const handleMaterialsSync = () => {
+      setMaterials(getStoredMaterials());
+    };
+    const handleSubjectsSync = () => {
+      setSubjects(getStoredSubjects());
+    };
+
+    window.addEventListener('storage', (e) => {
+      if (e.key === 'madrasahku_materials') {
+        setMaterials(getStoredMaterials());
+      }
+      if (e.key === 'madrasahku_subjects') {
+        setSubjects(getStoredSubjects());
+      }
+    });
+    window.addEventListener(MATERIALS_UPDATED_EVENT, handleMaterialsSync);
+    window.addEventListener(SUBJECTS_UPDATED_EVENT, handleSubjectsSync);
+
+    return () => {
+      window.removeEventListener(MATERIALS_UPDATED_EVENT, handleMaterialsSync);
+      window.removeEventListener(SUBJECTS_UPDATED_EVENT, handleSubjectsSync);
+    };
+  }, []);
 
   const getIcon = (iconName: string) => {
     switch (iconName) {
@@ -42,7 +85,7 @@ export const SubjectCurriculumView: React.FC = () => {
     }
   };
 
-  const filteredSubjects = mockSubjects.filter((subject) => {
+  const filteredSubjects = subjects.filter((subject) => {
     const matchesCat = activeCategory === 'semua' || subject.category === activeCategory;
     const matchesGrade = gradeFilter === 'semua' || subject.gradeLevels.includes(gradeFilter as number);
     return matchesCat && matchesGrade;
@@ -50,6 +93,13 @@ export const SubjectCurriculumView: React.FC = () => {
 
   const kemenagSubjects = filteredSubjects.filter(s => s.category === 'kemenag');
   const umumSubjects = filteredSubjects.filter(s => s.category === 'umum');
+
+  // Filter materials based on category and grade filter
+  const filteredTeacherMaterials = materials.filter(m => {
+    const matchesCat = activeCategory === 'semua' || m.category === activeCategory;
+    const matchesGrade = gradeFilter === 'semua' || m.grade === 0 || m.grade === gradeFilter;
+    return matchesCat && matchesGrade;
+  });
 
   return (
     <div className="space-y-8 pb-12">
@@ -79,7 +129,7 @@ export const SubjectCurriculumView: React.FC = () => {
                   : 'text-emerald-200 hover:text-white'
               }`}
             >
-              Semua Pelajaran ({mockSubjects.length})
+              Semua Pelajaran ({subjects.length})
             </button>
             <button
               onClick={() => { soundEngine.playClick(); setActiveCategory('kemenag'); }}
@@ -89,7 +139,7 @@ export const SubjectCurriculumView: React.FC = () => {
                   : 'text-emerald-200 hover:text-white'
               }`}
             >
-              Khas Kemenag (5)
+              Khas Kemenag ({subjects.filter(s => s.category === 'kemenag').length})
             </button>
             <button
               onClick={() => { soundEngine.playClick(); setActiveCategory('umum'); }}
@@ -99,7 +149,7 @@ export const SubjectCurriculumView: React.FC = () => {
                   : 'text-emerald-200 hover:text-white'
               }`}
             >
-              Umum Nasional (5)
+              Umum Nasional ({subjects.filter(s => s.category === 'umum').length})
             </button>
           </div>
 
@@ -125,6 +175,93 @@ export const SubjectCurriculumView: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* SECTION 0: MATERI & MODUL PEMBELAJARAN DARI GURU (TERINTEGRASI & REAL-TIME) */}
+      <section className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-2xs space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+          <div>
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-900 border border-emerald-200 mb-2">
+              <Sparkles className="w-3.5 h-3.5 text-emerald-700" />
+              <span>Modul & Materi Ajar Dari Ustadz / Guru (Real-Time Sync)</span>
+            </div>
+            <h2 className="text-xl sm:text-2xl font-bold text-slate-900 font-serif">
+              Materi & Berkas Pembelajaran Siswa
+            </h2>
+            <p className="text-xs text-slate-500 mt-1">
+              Santri dapat langsung membuka modul bacaan, video ajar, audio murattal, dan lembar materi yang diunggah oleh bapak/ibu guru.
+            </p>
+          </div>
+          <span className="text-xs font-bold text-emerald-800 bg-emerald-50 px-3.5 py-1.5 rounded-full border border-emerald-200 self-start sm:self-auto">
+            {filteredTeacherMaterials.length} Modul Siap Diakses
+          </span>
+        </div>
+
+        {filteredTeacherMaterials.length === 0 ? (
+          <div className="text-center py-10 bg-slate-50 rounded-2xl border border-dashed border-slate-200 text-slate-500 text-xs">
+            Belum ada modul yang diunggah untuk kategori atau tingkat kelas yang dipilih.
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            {filteredTeacherMaterials.map((mat) => (
+              <div
+                key={mat.id}
+                className="bg-white rounded-2xl border border-slate-200 hover:border-emerald-400 p-5 shadow-2xs hover:shadow-md transition-all flex flex-col justify-between group"
+              >
+                <div>
+                  <div className="flex items-center justify-between text-xs mb-2.5">
+                    <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                      mat.category === 'kemenag' 
+                        ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' 
+                        : 'bg-indigo-50 text-indigo-800 border border-indigo-200'
+                    }`}>
+                      {mat.subjectName}
+                    </span>
+                    <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md flex items-center gap-1">
+                      {mat.format === 'Video' && <Film className="w-3 h-3 text-rose-500" />}
+                      {mat.format === 'Dokumen PDF' && <FileText className="w-3 h-3 text-red-500" />}
+                      {mat.format === 'Audio MP3' && <Music className="w-3 h-3 text-emerald-500" />}
+                      <span>{mat.format}</span>
+                    </span>
+                  </div>
+
+                  <h3 className="font-bold text-slate-900 text-base mb-1.5 group-hover:text-emerald-700 transition-colors line-clamp-1">
+                    {mat.title}
+                  </h3>
+                  <p className="text-xs text-slate-600 leading-relaxed mb-3 line-clamp-2">
+                    {mat.description}
+                  </p>
+
+                  <div className="bg-slate-50 rounded-xl p-3 border border-slate-100 text-[11px] text-slate-600 space-y-1 mb-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-400">Pengampu:</span>
+                      <span className="font-bold text-slate-800">{mat.teacherName}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-400">Sasaran:</span>
+                      <span className="font-semibold text-emerald-700">
+                        {mat.grade === 0 ? 'Semua Kelas (1–6)' : `Kelas ${mat.grade}`}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="pt-3 border-t border-slate-100 flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      soundEngine.playClick();
+                      setSelectedModule(mat);
+                    }}
+                    className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
+                  >
+                    <Eye className="w-3.5 h-3.5" />
+                    <span>Buka & Pelajari Modul</span>
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
 
       {/* Section 1: Mata Pelajaran Kemenag */}
       {(activeCategory === 'semua' || activeCategory === 'kemenag') && (
@@ -248,11 +385,11 @@ export const SubjectCurriculumView: React.FC = () => {
 
       {/* Subject Detail Modal */}
       {selectedSubject && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4 animate-in fade-in">
-          <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-slate-100 max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-in fade-in">
+          <div className="bg-white rounded-3xl max-w-2xl w-full p-6 sm:p-7 shadow-2xl border border-slate-100 max-h-[90vh] overflow-y-auto space-y-6">
             <div className="flex items-start justify-between pb-4 border-b border-slate-100">
               <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-xl bg-emerald-50 border border-emerald-100 flex items-center justify-center">
+                <div className="w-12 h-12 rounded-2xl bg-emerald-50 border border-emerald-100 flex items-center justify-center">
                   {getIcon(selectedSubject.iconName)}
                 </div>
                 <div>
@@ -275,112 +412,135 @@ export const SubjectCurriculumView: React.FC = () => {
               </div>
               <button
                 onClick={() => setSelectedSubject(null)}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 cursor-pointer"
+                className="p-1.5 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-100 cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* Subject Overview & Interactive Modules */}
-            <div className="mt-5 space-y-6">
-              <div>
-                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
-                  Deskripsi & Capaian Pembelajaran
+            {/* Subject Overview */}
+            <div>
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
+                Deskripsi & Capaian Pembelajaran
+              </h4>
+              <p className="text-sm text-slate-700 leading-relaxed bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                {selectedSubject.description} Materi pembelajaran didesain dengan integrasi nilai-nilai keislaman, ramah tumbuh kembang anak usia SD/MI, serta menyertakan latihan interaktif audio dan visual.
+              </p>
+            </div>
+
+            {/* Modules Uploaded by Teacher for this Subject */}
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-emerald-800">
+                  Modul & Materi Unggahan Guru ({materials.filter(m => m.subjectName === selectedSubject.name || m.subjectId === selectedSubject.id).length})
                 </h4>
-                <p className="text-sm text-slate-700 leading-relaxed bg-slate-50 p-3 rounded-xl border border-slate-100">
-                  {selectedSubject.description} Materi pembelajaran didesain dengan integrasi nilai-nilai keislaman, ramah tumbuh kembang anak usia SD/MI, serta menyertakan latihan interaktif audio dan visual.
-                </p>
+                <span className="text-[11px] text-slate-400">Tersinkronisasi Langsung</span>
               </div>
 
-              {/* Sample Chapters */}
-              <div>
-                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3">
-                  Daftar Bab & Materi Interaktif
-                </h4>
+              {materials.filter(m => m.subjectName === selectedSubject.name || m.subjectId === selectedSubject.id).length === 0 ? (
+                <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 text-center text-xs text-slate-500">
+                  Belum ada berkas unggahan khusus untuk mata pelajaran ini. Silakan akses daftar modul utama di beranda materi.
+                </div>
+              ) : (
                 <div className="space-y-2.5">
-                  <div className="flex items-center justify-between p-3 rounded-xl border border-slate-200 hover:bg-slate-50 transition-colors">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center text-xs font-bold">
-                        1
-                      </div>
-                      <div>
-                        <div className="text-sm font-semibold text-slate-800">
-                          Pengenalan Konsep & Dalil Pokok
+                  {materials
+                    .filter(m => m.subjectName === selectedSubject.name || m.subjectId === selectedSubject.id)
+                    .map((mat) => (
+                      <div
+                        key={mat.id}
+                        className="flex items-center justify-between p-3.5 rounded-2xl border border-emerald-100 bg-emerald-50/40 hover:bg-emerald-50 transition-colors"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center text-xs font-bold">
+                            {mat.format === 'Video' ? <Film className="w-4 h-4" /> : mat.format === 'Audio MP3' ? <Music className="w-4 h-4" /> : <FileText className="w-4 h-4" />}
+                          </div>
+                          <div>
+                            <div className="text-sm font-bold text-slate-900">
+                              {mat.title}
+                            </div>
+                            <div className="text-xs text-slate-500 flex items-center gap-2">
+                              <span>{mat.format}</span>
+                              <span>·</span>
+                              <span>{mat.teacherName}</span>
+                            </div>
+                          </div>
                         </div>
-                        <div className="text-xs text-slate-500 flex items-center gap-2">
-                          <Clock className="w-3 h-3" /> 2 Jam Pelajaran (JP)
-                          <span>·</span>
-                          <span className="text-emerald-700 font-medium">Video Ajar Interaktif</span>
-                        </div>
+                        <button 
+                          onClick={() => {
+                            soundEngine.playSuccess();
+                            setSelectedModule(mat);
+                          }}
+                          className="px-3.5 py-1.5 bg-emerald-600 text-white rounded-xl text-xs font-bold hover:bg-emerald-700 transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                          <span>Pelajari</span>
+                        </button>
                       </div>
-                    </div>
-                    <button 
-                      onClick={() => {
-                        soundEngine.playSuccess();
-                        alert(`Memulai modul pembelajaran "${selectedSubject.name}: Bab 1"`);
-                      }}
-                      className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-semibold hover:bg-emerald-700 transition-colors flex items-center gap-1.5 cursor-pointer"
-                    >
-                      <Play className="w-3.5 h-3.5 fill-current" />
-                      Buka Materi
-                    </button>
-                  </div>
+                    ))}
+                </div>
+              )}
+            </div>
 
-                  <div className="flex items-center justify-between p-3 rounded-xl border border-slate-200 hover:bg-slate-50 transition-colors">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-lg bg-teal-100 text-teal-800 flex items-center justify-center text-xs font-bold">
-                        2
+            {/* Sample Chapters */}
+            <div>
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3">
+                Daftar Bab & Silabus Interaktif
+              </h4>
+              <div className="space-y-2.5">
+                <div className="flex items-center justify-between p-3.5 rounded-2xl border border-slate-200 hover:bg-slate-50 transition-colors">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center text-xs font-bold">
+                      1
+                    </div>
+                    <div>
+                      <div className="text-sm font-semibold text-slate-800">
+                        Pengenalan Konsep & Dalil Pokok
                       </div>
-                      <div>
-                        <div className="text-sm font-semibold text-slate-800">
-                          Praktik Mandiri & Pembiasaan Adab
-                        </div>
-                        <div className="text-xs text-slate-500 flex items-center gap-2">
-                          <Clock className="w-3 h-3" /> 2 JP
-                          <span>·</span>
-                          <span className="text-blue-700 font-medium">Lembar Kerja & Audio</span>
-                        </div>
+                      <div className="text-xs text-slate-500 flex items-center gap-2">
+                        <Clock className="w-3 h-3" /> 2 Jam Pelajaran (JP)
+                        <span>·</span>
+                        <span className="text-emerald-700 font-medium">Video Ajar Interaktif</span>
                       </div>
                     </div>
-                    <button 
-                      onClick={() => {
-                        soundEngine.playSuccess();
-                        alert(`Membuka Lembar Kerja "${selectedSubject.name}: Bab 2"`);
-                      }}
-                      className="px-3 py-1.5 bg-slate-100 text-slate-800 rounded-lg text-xs font-semibold hover:bg-slate-200 transition-colors flex items-center gap-1.5 cursor-pointer"
-                    >
-                      <FileText className="w-3.5 h-3.5" />
-                      Lembar Kerja
-                    </button>
                   </div>
+                  <button 
+                    onClick={() => {
+                      soundEngine.playSuccess();
+                      alert(`Memulai modul pembelajaran "${selectedSubject.name}: Bab 1"`);
+                    }}
+                    className="px-3 py-1.5 bg-emerald-600 text-white rounded-xl text-xs font-semibold hover:bg-emerald-700 transition-colors flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Play className="w-3.5 h-3.5 fill-current" />
+                    Buka
+                  </button>
+                </div>
 
-                  <div className="flex items-center justify-between p-3 rounded-xl border border-slate-200 hover:bg-slate-50 transition-colors">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-lg bg-amber-100 text-amber-800 flex items-center justify-center text-xs font-bold">
-                        3
+                <div className="flex items-center justify-between p-3.5 rounded-2xl border border-slate-200 hover:bg-slate-50 transition-colors">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-xl bg-teal-100 text-teal-800 flex items-center justify-center text-xs font-bold">
+                      2
+                    </div>
+                    <div>
+                      <div className="text-sm font-semibold text-slate-800">
+                        Praktik Mandiri & Pembiasaan Adab
                       </div>
-                      <div>
-                        <div className="text-sm font-semibold text-slate-800">
-                          Kuis Bintang & Asesmen Formatif
-                        </div>
-                        <div className="text-xs text-slate-500 flex items-center gap-2">
-                          <Sparkles className="w-3 h-3 text-amber-500" /> Gamifikasi 10 Soal
-                          <span>·</span>
-                          <span className="text-amber-700 font-medium">+50 Poin Bintang</span>
-                        </div>
+                      <div className="text-xs text-slate-500 flex items-center gap-2">
+                        <Clock className="w-3 h-3" /> 2 JP
+                        <span>·</span>
+                        <span className="text-blue-700 font-medium">Lembar Kerja & Audio</span>
                       </div>
                     </div>
-                    <button 
-                      onClick={() => {
-                        soundEngine.playReward();
-                        alert(`Membuka kuis formatif "${selectedSubject.name}"`);
-                      }}
-                      className="px-3 py-1.5 bg-amber-500 text-white rounded-lg text-xs font-semibold hover:bg-amber-600 transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs"
-                    >
-                      <Sparkles className="w-3.5 h-3.5" />
-                      Mulai Kuis
-                    </button>
                   </div>
+                  <button 
+                    onClick={() => {
+                      soundEngine.playSuccess();
+                      alert(`Membuka Lembar Kerja "${selectedSubject.name}: Bab 2"`);
+                    }}
+                    className="px-3 py-1.5 bg-slate-100 text-slate-800 rounded-xl text-xs font-semibold hover:bg-slate-200 transition-colors flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <FileText className="w-3.5 h-3.5" />
+                    Lembar Kerja
+                  </button>
                 </div>
               </div>
             </div>
@@ -388,13 +548,25 @@ export const SubjectCurriculumView: React.FC = () => {
             <div className="mt-6 pt-4 border-t border-slate-100 flex justify-end">
               <button
                 onClick={() => setSelectedSubject(null)}
-                className="px-4 py-2 bg-slate-900 text-white text-xs font-semibold rounded-xl hover:bg-slate-800 transition-colors cursor-pointer"
+                className="px-5 py-2 bg-slate-900 text-white text-xs font-semibold rounded-xl hover:bg-slate-800 transition-colors cursor-pointer"
               >
-                Tutup Modul
+                Tutup Jendela
               </button>
             </div>
           </div>
         </div>
+      )}
+
+      {/* Interactive In-App Material Reader Modal (Akses Langsung Tanpa Unduh) */}
+      {selectedModule && (
+        <MaterialReaderModal
+          material={selectedModule}
+          isOpen={Boolean(selectedModule)}
+          onClose={() => setSelectedModule(null)}
+          onComplete={() => {
+            setSelectedModule(null);
+          }}
+        />
       )}
     </div>
   );

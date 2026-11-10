@@ -244,10 +244,10 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
             <div>
               <span className="text-xl font-bold tracking-tight text-emerald-950 font-serif">
-                MadrasahKu
+                MI Darul Ulum
               </span>
               <span className="text-xs text-emerald-700 font-medium block -mt-1">
-                LMS MI Mandiri
+                LMS MI Darul Ulum Sidareja
               </span>
             </div>
           </div>

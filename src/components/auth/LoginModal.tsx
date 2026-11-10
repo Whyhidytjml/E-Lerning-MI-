@@ -57,8 +57,19 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     e.preventDefault();
     setErrorMsg('');
 
-    // Find account matching role or username
-    const found = mockUserAccounts.find(u => u.role === selectedRole);
+    // Find account matching username, NIS, NIP or selected role
+    const cleanUser = username.trim().toLowerCase();
+    let found = cleanUser 
+      ? mockUserAccounts.find(u => 
+          u.username.toLowerCase().includes(cleanUser) || 
+          u.name.toLowerCase().includes(cleanUser) || 
+          u.identifier.toLowerCase().includes(cleanUser)
+        )
+      : null;
+    if (!found) {
+      found = mockUserAccounts.find(u => u.role === selectedRole);
+    }
+
     if (found) {
       soundEngine.playReward();
       confetti({
@@ -91,10 +102,10 @@ export const LoginModal: React.FC<LoginModalProps> = ({
             <BookOpen className="w-6 h-6" />
           </div>
           <h2 className="text-2xl font-bold font-serif text-emerald-950">
-            Masuk ke MadrasahKu
+            Masuk ke LMS MI Darul Ulum Sidareja
           </h2>
           <p className="text-xs text-slate-500 mt-1">
-            Sistem Manajemen Pembelajaran & Pengasuhan Digital Terpadu MI
+            Madrasah Ibtidaiyah Darul Ulum Sidareja · Portal Pembelajaran Terpadu
           </p>
 
           {/* Toggle between Quick 1-Click vs Manual Form */}

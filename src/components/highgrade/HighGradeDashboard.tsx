@@ -1,6 +1,9 @@
-import React, { useState, useRef } from 'react';
-import { Student, Assignment, LearningMaterial } from '../../types/lms';
-import { mockAssignments, mockLearningMaterials } from '../../data/mockData';
+import React, { useState, useRef, useEffect } from 'react';
+import { Student, Assignment, LearningMaterial, DayLessonSchedule, LessonSession } from '../../types/lms';
+import { mockAssignments, mockLearningMaterials, mockDailyLessonSchedules } from '../../data/mockData';
+import { getStoredMaterials, MATERIALS_UPDATED_EVENT } from '../../utils/materialsStorage';
+import { MaterialReaderModal } from '../common/MaterialReaderModal';
+import { CbtExamModal } from '../cbt/CbtExamModal';
 import { soundEngine } from '../../utils/audio';
 import confetti from 'canvas-confetti';
 import { 
@@ -24,7 +27,9 @@ import {
   Eye,
   File,
   Film,
-  Music
+  Music,
+  MapPin,
+  CalendarDays
 } from 'lucide-react';
 
 interface HighGradeDashboardProps {
@@ -36,9 +41,46 @@ export const HighGradeDashboard: React.FC<HighGradeDashboardProps> = ({
   student,
   onNavigateTab
 }) => {
-  const [activeView, setActiveView] = useState<'tugas' | 'modul_guru'>('tugas');
+  const [activeView, setActiveView] = useState<'tugas' | 'modul_guru' | 'jadwal'>('tugas');
   const [assignments, setAssignments] = useState<Assignment[]>(mockAssignments);
   const [selectedAssignment, setSelectedAssignment] = useState<Assignment | null>(null);
+
+  // Determine current day for schedule
+  const getTodayDayName = (): string => {
+    const dayNames = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+    const current = dayNames[new Date().getDay()];
+    return current === 'Minggu' ? 'Senin' : current;
+  };
+
+  const [selectedScheduleDay, setSelectedScheduleDay] = useState<string>(getTodayDayName());
+  const [scheduleViewMode, setScheduleViewMode] = useState<'harian' | 'pekanan'>('harian');
+
+  // Class schedules for grade 5
+  const classSchedules: DayLessonSchedule[] = 
+    mockDailyLessonSchedules[student.grade] || 
+    mockDailyLessonSchedules[5] || 
+    [];
+
+  const activeDaySchedule = 
+    classSchedules.find(s => (s.day || s.dayName || '').toLowerCase() === selectedScheduleDay.toLowerCase()) || 
+    classSchedules[0];
+
+  // Materials loaded from localStorage so students can view teacher's uploaded materials
+  const [materials, setMaterials] = useState<LearningMaterial[]>(() => getStoredMaterials());
+
+  // Sync materials when switching to modul_guru or on storage/custom events
+  useEffect(() => {
+    const syncMaterials = () => {
+      setMaterials(getStoredMaterials());
+    };
+    syncMaterials();
+    window.addEventListener('storage', syncMaterials);
+    window.addEventListener(MATERIALS_UPDATED_EVENT, syncMaterials);
+    return () => {
+      window.removeEventListener('storage', syncMaterials);
+      window.removeEventListener(MATERIALS_UPDATED_EVENT, syncMaterials);
+    };
+  }, [activeView]);
   
   // Submission Form State
   const [submissionType, setSubmissionType] = useState<'teks' | 'audio' | 'dokumen'>('dokumen');
@@ -54,45 +96,6 @@ export const HighGradeDashboard: React.FC<HighGradeDashboardProps> = ({
   // Module Viewer Modal State
   const [selectedModule, setSelectedModule] = useState<LearningMaterial | null>(null);
   const [moduleFilterCategory, setModuleFilterCategory] = useState<'semua' | 'kemenag' | 'umum'>('semua');
-
-  // CBT State
-  const [cbtCurrentQuestion, setCbtCurrentQuestion] = useState(0);
-  const [cbtAnswers, setCbtAnswers] = useState<Record<number, number>>({});
-  const [cbtFinished, setCbtFinished] = useState(false);
-  const [cbtScore, setCbtScore] = useState(0);
-
-  const cbtQuestions = [
-    {
-      q: "Menurut ketentuan fikih, shalat jamak takdim adalah...",
-      options: [
-        "Menggabungkan dua shalat fardhu dan dikerjakan pada waktu shalat yang kedua",
-        "Menggabungkan dua shalat fardhu dan dikerjakan pada waktu shalat yang pertama",
-        "Meringkas shalat empat rakaat menjadi dua rakaat",
-        "Mengerjakan shalat sunnah setelah shalat fardhu"
-      ],
-      correct: 1
-    },
-    {
-      q: "Pada rantai makanan di ekosistem sawah, peran padi adalah sebagai...",
-      options: [
-        "Konsumen tingkat 1 (Herbivora)",
-        "Pengurai (Dekomposer)",
-        "Produsen (Autotrof)",
-        "Konsumen puncak"
-      ],
-      correct: 2
-    },
-    {
-      q: "Berikut adalah huruf ikhfa haqiqi dalam hukum tajwid nun mati/tanwin, KECUALI...",
-      options: [
-        "Ta (ت)",
-        "Jim (ج)",
-        "Khaf (ك)",
-        "Hamzah (ء)"
-      ],
-      correct: 3
-    }
-  ];
 
   const handleOpenSubmit = (asg: Assignment) => {
     soundEngine.playClick();
@@ -146,24 +149,10 @@ export const HighGradeDashboard: React.FC<HighGradeDashboardProps> = ({
     setSelectedAssignment(null);
   };
 
-  const handleAnswerCbt = (qIdx: number, optIdx: number) => {
-    soundEngine.playClick();
-    setCbtAnswers(prev => ({ ...prev, [qIdx]: optIdx }));
-  };
+  // Students can ONLY access learning materials belonging to their own class / grade
+  const classMaterials = materials.filter(m => m.grade === student.grade);
 
-  const handleFinishCbt = () => {
-    soundEngine.playReward();
-    confetti({ particleCount: 80, spread: 70, origin: { y: 0.6 } });
-    let correctCount = 0;
-    cbtQuestions.forEach((q, idx) => {
-      if (cbtAnswers[idx] === q.correct) correctCount++;
-    });
-    const finalScore = Math.round((correctCount / cbtQuestions.length) * 100);
-    setCbtScore(finalScore);
-    setCbtFinished(true);
-  };
-
-  const filteredMaterials = mockLearningMaterials.filter(m => {
+  const filteredMaterials = classMaterials.filter(m => {
     if (moduleFilterCategory === 'semua') return true;
     return m.category === moduleFilterCategory;
   });
@@ -199,6 +188,16 @@ export const HighGradeDashboard: React.FC<HighGradeDashboardProps> = ({
             <button
               onClick={() => {
                 soundEngine.playClick();
+                setActiveView('jadwal');
+              }}
+              className="px-4 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-2xl shadow-md transition-all flex items-center gap-2 cursor-pointer text-xs"
+            >
+              <Calendar className="w-4 h-4 text-slate-900" />
+              <span>Jadwal Pelajaran</span>
+            </button>
+            <button
+              onClick={() => {
+                soundEngine.playClick();
                 setActiveView('modul_guru');
               }}
               className="px-4 py-2.5 bg-white/10 hover:bg-white/20 text-white font-bold rounded-2xl border border-white/20 transition-all flex items-center gap-2 cursor-pointer text-xs"
@@ -210,13 +209,11 @@ export const HighGradeDashboard: React.FC<HighGradeDashboardProps> = ({
               onClick={() => {
                 soundEngine.playClick();
                 setCbtModalOpen(true);
-                setCbtFinished(false);
-                setCbtAnswers({});
               }}
-              className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-2xl shadow-md transition-all flex items-center gap-2 cursor-pointer text-xs"
+              className="px-4 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black rounded-2xl shadow-md transition-all flex items-center gap-2 cursor-pointer text-xs"
             >
-              <FileCheck className="w-4 h-4" />
-              <span>Simulasi Ujian CBT</span>
+              <FileCheck className="w-4 h-4 text-slate-950" />
+              <span>Simulasi Ujian CBT (30 Soal & Timer)</span>
             </button>
           </div>
         </div>
@@ -224,16 +221,18 @@ export const HighGradeDashboard: React.FC<HighGradeDashboardProps> = ({
         {/* Metric Bar */}
         <div className="mt-6 pt-5 border-t border-slate-800 grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
           <div className="bg-white/5 rounded-xl p-3 border border-white/10">
+            <div className="text-slate-400">Jadwal Hari Ini ({activeDaySchedule ? (activeDaySchedule.day || activeDaySchedule.dayName || 'Hari Ini') : 'Hari Ini'})</div>
+            <div className="text-sm font-bold text-amber-300 mt-0.5 truncate">
+              {activeDaySchedule ? activeDaySchedule.sessions.length : 0} Jam Pelajaran
+            </div>
+          </div>
+          <div className="bg-white/5 rounded-xl p-3 border border-white/10">
             <div className="text-slate-400">Tugas Aktif</div>
             <div className="text-lg font-bold text-white mt-0.5">{assignments.length} Tugas</div>
           </div>
           <div className="bg-white/5 rounded-xl p-3 border border-white/10">
-            <div className="text-slate-400">Modul Guru</div>
-            <div className="text-lg font-bold text-emerald-400 mt-0.5">{mockLearningMaterials.length} Modul Terbit</div>
-          </div>
-          <div className="bg-white/5 rounded-xl p-3 border border-white/10">
-            <div className="text-slate-400">Rata-rata Nilai</div>
-            <div className="text-lg font-bold text-white mt-0.5">94.5 / 100</div>
+            <div className="text-slate-400">Modul Kelas {student.grade}</div>
+            <div className="text-lg font-bold text-emerald-400 mt-0.5">{classMaterials.length} Modul Terbit</div>
           </div>
           <div className="bg-white/5 rounded-xl p-3 border border-white/10">
             <div className="text-slate-400">Presensi Kehadiran</div>
@@ -242,8 +241,8 @@ export const HighGradeDashboard: React.FC<HighGradeDashboardProps> = ({
         </div>
       </div>
 
-      {/* Navigation Switcher: Tugas vs Modul dari Guru */}
-      <div className="flex items-center gap-3 border-b border-slate-200 pb-3">
+      {/* Navigation Switcher: Tugas vs Modul Guru vs Jadwal Pelajaran */}
+      <div className="flex flex-wrap items-center gap-3 border-b border-slate-200 pb-3">
         <button
           onClick={() => { soundEngine.playClick(); setActiveView('tugas'); }}
           className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
@@ -265,7 +264,19 @@ export const HighGradeDashboard: React.FC<HighGradeDashboardProps> = ({
           }`}
         >
           <BookOpen className="w-4 h-4" />
-          <span>Melihat Modul dari Guru ({mockLearningMaterials.length})</span>
+          <span>Melihat Modul dari Guru ({classMaterials.length})</span>
+        </button>
+
+        <button
+          onClick={() => { soundEngine.playClick(); setActiveView('jadwal'); }}
+          className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
+            activeView === 'jadwal' 
+              ? 'bg-emerald-600 text-white shadow-sm' 
+              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+          }`}
+        >
+          <Calendar className="w-4 h-4" />
+          <span>Jadwal Pelajaran Harian (Kelas 5)</span>
         </button>
       </div>
 
@@ -373,12 +384,20 @@ export const HighGradeDashboard: React.FC<HighGradeDashboardProps> = ({
         <div className="space-y-5">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[11px] border border-emerald-200">
+                  Khusus {student.gradeLabel}
+                </span>
+                <span className="text-[11px] text-slate-500 font-medium">
+                  🔒 Akses Terkunci: Hanya Menampilkan Materi Kelas {student.grade}
+                </span>
+              </div>
               <h2 className="text-xl font-bold text-slate-800 font-serif flex items-center gap-2">
                 <BookOpen className="w-5 h-5 text-emerald-600" />
-                <span>Bahan Ajar & Modul dari Guru</span>
+                <span>Bahan Ajar & Modul Kelas {student.grade} ({classMaterials.length} Modul)</span>
               </h2>
               <p className="text-xs text-slate-500">
-                Akses modul PDF, ringkasan fikih/tajwid, video ajar, dan audio murattal yang diunggah oleh ustadz & ustadzah.
+                Akses materi resmi Kelas {student.grade} yang diterbitkan oleh ustadz & ustadzah pengampu.
               </p>
             </div>
 
@@ -390,7 +409,7 @@ export const HighGradeDashboard: React.FC<HighGradeDashboardProps> = ({
                   moduleFilterCategory === 'semua' ? 'bg-emerald-600 text-white' : 'text-slate-600 hover:bg-slate-100'
                 }`}
               >
-                Semua
+                Semua ({classMaterials.length})
               </button>
               <button
                 onClick={() => setModuleFilterCategory('kemenag')}
@@ -398,7 +417,7 @@ export const HighGradeDashboard: React.FC<HighGradeDashboardProps> = ({
                   moduleFilterCategory === 'kemenag' ? 'bg-emerald-600 text-white' : 'text-slate-600 hover:bg-slate-100'
                 }`}
               >
-                Agama Kemenag
+                Agama Kemenag ({classMaterials.filter(m => m.category === 'kemenag').length})
               </button>
               <button
                 onClick={() => setModuleFilterCategory('umum')}
@@ -406,13 +425,18 @@ export const HighGradeDashboard: React.FC<HighGradeDashboardProps> = ({
                   moduleFilterCategory === 'umum' ? 'bg-emerald-600 text-white' : 'text-slate-600 hover:bg-slate-100'
                 }`}
               >
-                Mapel Umum
+                Mapel Umum ({classMaterials.filter(m => m.category === 'umum').length})
               </button>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {filteredMaterials.map((modul) => (
+          {filteredMaterials.length === 0 ? (
+            <div className="p-8 text-center bg-white rounded-2xl border border-dashed border-slate-200 text-slate-500 text-xs">
+              Belum ada modul yang diterbitkan untuk kategori ini pada Kelas {student.grade}.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              {filteredMaterials.map((modul) => (
               <div 
                 key={modul.id}
                 className="bg-white rounded-2xl border border-slate-200 p-5 shadow-2xs hover:shadow-md transition-all flex flex-col justify-between"
@@ -445,7 +469,7 @@ export const HighGradeDashboard: React.FC<HighGradeDashboardProps> = ({
                   <div className="bg-slate-50 rounded-xl p-3 border border-slate-100 text-[11px] text-slate-600 space-y-1 mb-3">
                     <div className="flex items-center justify-between">
                       <span className="text-slate-400">Pengampu:</span>
-                      <span className="font-bold text-slate-800">Ustadz Ridwan, S.Pd.I</span>
+                      <span className="font-bold text-slate-800">{modul.teacherName}</span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-slate-400">Jadwal Rilis:</span>
@@ -462,98 +486,313 @@ export const HighGradeDashboard: React.FC<HighGradeDashboardProps> = ({
                     }}
                     className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
                   >
-                    <Eye className="w-3.5 h-3.5" />
-                    <span>Buka & Pelajari Modul</span>
+                    <BookOpen className="w-3.5 h-3.5" />
+                    <span>Buka Materi (Akses Langsung Online)</span>
                   </button>
                 </div>
               </div>
             ))}
           </div>
-        </div>
-      )}
+        )}
+      </div>
+    )}
 
-      {/* MODULE DETAIL MODAL */}
-      {selectedModule && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in">
-          <div className="bg-white rounded-3xl max-w-xl w-full p-6 shadow-2xl border border-slate-100 space-y-5">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-200">
-              <div className="flex items-center gap-2">
-                <div className="p-2 bg-emerald-100 text-emerald-800 rounded-xl">
-                  <BookOpen className="w-5 h-5" />
+      {/* VIEW 3: JADWAL PELAJARAN HARIAN & PEKANAN (KELAS 5 SITI KHADIJAH) */}
+      {activeView === 'jadwal' && (
+        <div className="space-y-5 animate-in fade-in">
+          {/* Section Header */}
+          <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-2xs space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+              <div className="flex items-start sm:items-center gap-3">
+                <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-500 text-white flex items-center justify-center font-bold text-2xl shadow-sm shrink-0">
+                  📅
                 </div>
                 <div>
-                  <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">
-                    {selectedModule.subjectName} · {selectedModule.category.toUpperCase()}
-                  </span>
-                  <h3 className="text-base font-bold text-slate-900 font-serif">
-                    {selectedModule.title}
-                  </h3>
-                </div>
-              </div>
-              <button
-                onClick={() => setSelectedModule(null)}
-                className="p-1.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="space-y-4 text-xs">
-              <div className="bg-emerald-50/70 border border-emerald-200 rounded-2xl p-4 space-y-2">
-                <span className="font-bold text-emerald-950 block">Uraian & Petunjuk Guru:</span>
-                <p className="text-slate-700 leading-relaxed">
-                  {selectedModule.description}
-                </p>
-                <p className="text-slate-600 leading-relaxed pt-2 border-t border-emerald-200/50">
-                  Pelajari setiap bab secara runtut. Catat dalil naqli dan contoh praktiknya untuk persiapan tugas dan kuis madrasah pekanan.
-                </p>
-              </div>
-
-              {/* Media Preview Box */}
-              <div className="border border-slate-200 rounded-2xl p-4 bg-slate-50 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <File className="w-4 h-4 text-emerald-600" />
-                    <span className="font-bold text-slate-800">
-                      Berkas: {selectedModule.title.replace(/\s+/g, '_')}.pdf
-                    </span>
+                  <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-900 text-[10px] font-bold uppercase tracking-wider mb-1">
+                    <Sparkles className="w-3 h-3 text-emerald-700" />
+                    <span>Kurikulum Merdeka Madrasah · {student.gradeLabel}</span>
                   </div>
-                  <span className="text-[11px] text-slate-500 font-mono">2.4 MB</span>
-                </div>
-
-                <div className="p-3 bg-white rounded-xl border border-slate-200 text-center space-y-1">
-                  <p className="text-slate-600 text-[11px]">
-                    Dokumen materi lengkap kurikulum madrasah terverifikasi.
+                  <h2 className="text-xl sm:text-2xl font-bold font-serif text-slate-900">
+                    Jadwal Pelajaran & Kalender Akademik Harian
+                  </h2>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    MI Darul Ulum Sidareja · Tahun Ajaran 2026/2027 · Semester Genap
                   </p>
                 </div>
               </div>
+
+              {/* View Mode Toggle: Harian vs Matriks Sepekan */}
+              <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-2xl self-start sm:self-auto text-xs font-bold">
+                <button
+                  type="button"
+                  onClick={() => { soundEngine.playClick(); setScheduleViewMode('harian'); }}
+                  className={`px-3.5 py-1.5 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 ${
+                    scheduleViewMode === 'harian'
+                      ? 'bg-white text-emerald-900 shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <Calendar className="w-3.5 h-3.5" />
+                  <span>Jadwal Harian</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { soundEngine.playClick(); setScheduleViewMode('pekanan'); }}
+                  className={`px-3.5 py-1.5 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 ${
+                    scheduleViewMode === 'pekanan'
+                      ? 'bg-white text-emerald-900 shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <CalendarDays className="w-3.5 h-3.5" />
+                  <span>Matriks Sepekan</span>
+                </button>
+              </div>
             </div>
 
-            <div className="pt-2 flex items-center justify-end gap-2.5">
-              <button
-                onClick={() => {
-                  soundEngine.playSuccess();
-                  alert(`Mengunduh berkas: ${selectedModule.title}.pdf`);
-                }}
-                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs flex items-center gap-1.5 cursor-pointer"
-              >
-                <Download className="w-3.5 h-3.5" />
-                <span>Unduh Dokumen</span>
-              </button>
-              <button
-                onClick={() => {
-                  soundEngine.playReward();
-                  confetti({ particleCount: 40, spread: 50 });
-                  setSelectedModule(null);
-                }}
-                className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 cursor-pointer shadow-xs"
-              >
-                <CheckCircle2 className="w-3.5 h-3.5" />
-                <span>Tandai Selesai Membaca</span>
-              </button>
-            </div>
+            {/* Day Selector Pills for Daily Mode */}
+            {scheduleViewMode === 'harian' && (
+              <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+                {classSchedules.map((item, dIdx) => {
+                  const dayLabel = item.day || item.dayName || `Hari ${dIdx + 1}`;
+                  const isSelected = dayLabel.toLowerCase() === selectedScheduleDay.toLowerCase();
+                  const isToday = dayLabel.toLowerCase() === getTodayDayName().toLowerCase();
+
+                  return (
+                    <button
+                      key={dayLabel}
+                      type="button"
+                      onClick={() => {
+                        soundEngine.playClick();
+                        setSelectedScheduleDay(dayLabel);
+                      }}
+                      className={`px-4 py-2.5 rounded-2xl text-xs font-bold transition-all cursor-pointer shrink-0 flex items-center gap-2 ${
+                        isSelected
+                          ? 'bg-emerald-600 text-white shadow-sm'
+                          : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200'
+                      }`}
+                    >
+                      <div className="flex flex-col text-left">
+                        <div className="flex items-center gap-1.5">
+                          <span>{dayLabel}</span>
+                          {isToday && (
+                            <span className={`text-[9px] px-1.5 py-0.2 rounded-full font-black ${
+                              isSelected ? 'bg-amber-400 text-amber-950' : 'bg-emerald-100 text-emerald-800'
+                            }`}>
+                              Hari Ini
+                            </span>
+                          )}
+                        </div>
+                        <span className={`text-[10px] font-amiri ${isSelected ? 'text-emerald-100' : 'text-slate-400'}`}>
+                          {item.dayArabic}
+                        </span>
+                      </div>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded-md ${
+                        isSelected ? 'bg-emerald-700 text-emerald-100' : 'bg-slate-200 text-slate-600'
+                      }`}>
+                        {item.sessions.length} Jam
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
+
+          {/* VIEW MODE 1: DAILY DETAIL */}
+          {scheduleViewMode === 'harian' && (
+            <div className="space-y-4">
+              {/* Morning Habit Banner */}
+              {activeDaySchedule?.morningHabit && (
+                <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <span className="text-2xl shrink-0">🕌</span>
+                    <div>
+                      <span className="text-[10px] font-black uppercase tracking-wider text-amber-900 bg-amber-200/80 px-2 py-0.5 rounded-md">
+                        Pembiasaan Pagi Karakter Madrasah
+                      </span>
+                      <p className="text-xs sm:text-sm font-bold text-amber-950 mt-0.5">
+                        {activeDaySchedule.morningHabit}
+                      </p>
+                    </div>
+                  </div>
+                  <span className="text-xs font-bold text-amber-800 hidden sm:inline-flex items-center gap-1 bg-white px-3 py-1 rounded-xl border border-amber-200">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Wajib Hadir Pagi
+                  </span>
+                </div>
+              )}
+
+              {/* Sessions List */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                {activeDaySchedule?.sessions.map((session, idx) => (
+                  <div
+                    key={session.id || session.period || idx}
+                    className="bg-white rounded-2xl border border-slate-200 hover:border-emerald-300 p-5 shadow-2xs hover:shadow-md transition-all flex flex-col justify-between group"
+                  >
+                    <div>
+                      {/* Period & Time Slot */}
+                      <div className="flex items-center justify-between text-xs mb-3">
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-900 text-white shadow-2xs">
+                          Jam Ke-{session.period ?? session.periodLabel ?? (idx + 1)}
+                        </span>
+                        <span className="text-[11px] font-semibold text-slate-600 flex items-center gap-1 bg-slate-50 px-2 py-0.5 rounded-lg border border-slate-200">
+                          <Clock className="w-3 h-3 text-slate-400" />
+                          <span>{session.time || session.timeSlot || '08.00 WIB'}</span>
+                        </span>
+                      </div>
+
+                      {/* Subject Name & Category */}
+                      <div className="flex items-start gap-3 mb-3">
+                        <div className="w-11 h-11 rounded-2xl bg-emerald-50 text-emerald-800 flex items-center justify-center text-xl shrink-0 border border-emerald-200 group-hover:scale-105 transition-transform">
+                          {session.icon || '📖'}
+                        </div>
+                        <div className="min-w-0">
+                          <span className={`text-[9px] font-bold px-2 py-0.5 rounded-md uppercase tracking-wider ${
+                            session.category === 'kemenag' 
+                              ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                              : 'bg-indigo-50 text-indigo-800 border border-indigo-200'
+                          }`}>
+                            {session.category === 'kemenag' ? 'Kurikulum Kemenag' : 'Mata Pelajaran Umum'}
+                          </span>
+                          <h3 className="font-bold text-slate-900 text-base leading-snug mt-1 group-hover:text-emerald-700 transition-colors">
+                            {session.subjectName}
+                          </h3>
+                        </div>
+                      </div>
+
+                      {/* Focus Topic / Capaian Pembelajaran */}
+                      <div className="bg-slate-50 rounded-xl p-3 border border-slate-100 text-xs mb-4">
+                        <span className="text-[10px] font-bold text-slate-400 block uppercase tracking-wider mb-0.5">
+                          Fokus Pembelajaran / CP:
+                        </span>
+                        <p className="font-semibold text-slate-800 leading-relaxed">
+                          {session.focusTopic}
+                        </p>
+                      </div>
+
+                      {/* Teacher & Room Location */}
+                      <div className="space-y-1.5 text-xs text-slate-600 pt-2 border-t border-slate-100">
+                        <div className="flex items-center gap-2">
+                          <span className="text-slate-400 font-medium">Asatidz:</span>
+                          <span className="font-bold text-emerald-950 truncate">{session.teacherName}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-[11px] text-slate-500">
+                          <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                          <span className="truncate">{session.room}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Quick Access to Modul Guru */}
+                    <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
+                      <span className="text-[11px] text-slate-400 font-medium">Semester Genap 2026</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          soundEngine.playClick();
+                          setActiveView('modul_guru');
+                          if (session.category === 'kemenag') setModuleFilterCategory('kemenag');
+                          else setModuleFilterCategory('umum');
+                        }}
+                        className="text-xs font-bold text-emerald-700 hover:text-emerald-900 flex items-center gap-1 cursor-pointer group-hover:translate-x-0.5 transition-transform"
+                      >
+                        <span>Akses Modul Guru</span>
+                        <ChevronRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* VIEW MODE 2: WEEKLY TIMETABLE MATRIX (SENIN - SABTU) */}
+          {scheduleViewMode === 'pekanan' && (
+            <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-2xs space-y-4 overflow-x-auto">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                <div>
+                  <h3 className="font-bold text-slate-900 text-base">
+                    Matriks Jadwal Pelajaran Sepekan Penuh (Senin – Sabtu)
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Struktur kurikulum terpadu: 10 Asatidz Pemetaan Mapel Kemenag & Umum.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    soundEngine.playSuccess();
+                    alert('Jadwal pelajaran sepekan siap dicetak atau disimpan.');
+                  }}
+                  className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Unduh / Cetak Jadwal</span>
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {classSchedules.map((dayPlan, pIdx) => {
+                  const dayTitle = dayPlan.day || dayPlan.dayName || `Hari ${pIdx + 1}`;
+                  return (
+                    <div
+                      key={dayTitle}
+                      className="p-4 rounded-2xl border border-slate-200 bg-slate-50/50 space-y-3"
+                    >
+                      <div className="flex items-center justify-between pb-2 border-b border-slate-200">
+                        <div>
+                          <span className="font-bold text-slate-900 text-sm">{dayTitle}</span>
+                          <span className="text-xs font-amiri text-slate-400 ml-1.5">{dayPlan.dayArabic}</span>
+                        </div>
+                      <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full">
+                        {dayPlan.sessions.length} Pelajaran
+                      </span>
+                    </div>
+
+                    <div className="text-[11px] text-amber-900 bg-amber-50 p-2 rounded-xl border border-amber-200 font-medium">
+                      🕌 {dayPlan.morningHabit.split('(')[0]}
+                    </div>
+
+                    <div className="space-y-2">
+                      {dayPlan.sessions.map((s, sIdx) => (
+                        <div
+                          key={s.id || s.period || sIdx}
+                          className="p-2.5 rounded-xl bg-white border border-slate-200 text-xs space-y-1 shadow-2xs"
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="font-black text-emerald-900 text-[11px]">
+                              Jam {s.period ?? s.periodLabel ?? (sIdx + 1)} · {s.subjectName}
+                            </span>
+                            <span className="text-[10px] text-slate-400">{(s.time || s.timeSlot || '08.00').split(' ')[0]}</span>
+                          </div>
+                          <div className="text-[11px] text-slate-600 font-medium">
+                            {s.teacherName.split(',')[0]}
+                          </div>
+                          <div className="text-[10px] text-slate-400 truncate">
+                            📍 {s.room}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+              </div>
+            </div>
+          )}
         </div>
+      )}
+
+      {/* Interactive In-App Material Reader Modal (Akses Langsung Tanpa Unduh) */}
+      {selectedModule && (
+        <MaterialReaderModal
+          material={selectedModule}
+          isOpen={Boolean(selectedModule)}
+          onClose={() => setSelectedModule(null)}
+          onComplete={() => {
+            setSelectedModule(null);
+          }}
+        />
       )}
 
       {/* SUBMISSION MODAL WITH DIRECT NATIVE FILE MANAGER */}
@@ -717,128 +956,13 @@ export const HighGradeDashboard: React.FC<HighGradeDashboardProps> = ({
         </div>
       )}
 
-      {/* CBT / Try Out Exam Simulator Modal */}
+      {/* CBT / Try Out Exam Simulator Modal with Active Countdown Timer & Anti-Cheat Shuffling */}
       {cbtModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in">
-          <div className="bg-white rounded-3xl max-w-2xl w-full p-6 sm:p-8 shadow-2xl border border-slate-100 max-h-[90vh] overflow-y-auto">
-            {!cbtFinished ? (
-              <div className="space-y-6">
-                {/* CBT Header */}
-                <div className="flex items-center justify-between pb-3 border-b border-slate-200">
-                  <div>
-                    <span className="text-xs font-bold text-emerald-700 tracking-wider uppercase">
-                      Simulasi Asesmen CBT Madrasah
-                    </span>
-                    <h3 className="text-lg font-bold text-slate-900 font-serif">
-                      Try Out Fikih & Sains Terpadu
-                    </h3>
-                  </div>
-                  <div className="flex items-center gap-2 bg-slate-900 text-white px-3 py-1.5 rounded-xl font-mono text-xs font-bold">
-                    <Clock className="w-3.5 h-3.5 text-amber-400" />
-                    <span>Sisa Waktu: 18:45</span>
-                  </div>
-                </div>
-
-                {/* Question Item */}
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between text-xs font-bold text-slate-400">
-                    <span>Soal Nomor {cbtCurrentQuestion + 1} dari {cbtQuestions.length}</span>
-                    <span>Bobot: 10 Poin</span>
-                  </div>
-
-                  <p className="text-base font-semibold text-slate-800 leading-relaxed">
-                    {cbtQuestions[cbtCurrentQuestion].q}
-                  </p>
-
-                  <div className="space-y-2.5">
-                    {cbtQuestions[cbtCurrentQuestion].options.map((opt, optIdx) => {
-                      const isSelected = cbtAnswers[cbtCurrentQuestion] === optIdx;
-                      return (
-                        <button
-                          key={optIdx}
-                          onClick={() => handleAnswerCbt(cbtCurrentQuestion, optIdx)}
-                          className={`w-full p-3.5 rounded-xl text-left text-xs font-medium transition-all flex items-center justify-between cursor-pointer border ${
-                            isSelected
-                              ? 'bg-emerald-50 border-emerald-500 text-emerald-950 font-bold ring-2 ring-emerald-300'
-                              : 'bg-white hover:bg-slate-50 border-slate-200 text-slate-700'
-                          }`}
-                        >
-                          <div className="flex items-center gap-3">
-                            <span className="w-6 h-6 rounded-lg bg-slate-100 flex items-center justify-center font-bold text-slate-600">
-                              {String.fromCharCode(65 + optIdx)}
-                            </span>
-                            <span>{opt}</span>
-                          </div>
-                          {isSelected && <CheckCircle2 className="w-4 h-4 text-emerald-600" />}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Navigation Buttons */}
-                <div className="flex items-center justify-between pt-4 border-t border-slate-100">
-                  <button
-                    disabled={cbtCurrentQuestion === 0}
-                    onClick={() => {
-                      soundEngine.playClick();
-                      setCbtCurrentQuestion(prev => Math.max(0, prev - 1));
-                    }}
-                    className="px-4 py-2 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 disabled:opacity-40 cursor-pointer"
-                  >
-                    ← Soal Sebelumnya
-                  </button>
-
-                  {cbtCurrentQuestion < cbtQuestions.length - 1 ? (
-                    <button
-                      onClick={() => {
-                        soundEngine.playClick();
-                        setCbtCurrentQuestion(prev => prev + 1);
-                      }}
-                      className="px-5 py-2 rounded-xl text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-700 cursor-pointer flex items-center gap-1.5"
-                    >
-                      <span>Soal Berikutnya</span>
-                      <ChevronRight className="w-4 h-4" />
-                    </button>
-                  ) : (
-                    <button
-                      onClick={handleFinishCbt}
-                      className="px-5 py-2 rounded-xl text-xs font-bold bg-amber-500 text-white hover:bg-amber-600 cursor-pointer shadow-md"
-                    >
-                      Selesai & Kumpulkan Ujian
-                    </button>
-                  )}
-                </div>
-              </div>
-            ) : (
-              /* CBT Result Screen */
-              <div className="text-center py-6 space-y-4">
-                <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center mx-auto text-2xl">
-                  🏆
-                </div>
-                <div>
-                  <h3 className="text-xl font-bold text-slate-900 font-serif">Alhamdulillah, Simulasi Ujian Selesai!</h3>
-                  <p className="text-xs text-slate-500 mt-1">
-                    Hasil telah dicatat dan terintegrasi otomatis ke Rapor Digital Siswa.
-                  </p>
-                </div>
-
-                <div className="p-5 bg-emerald-50 rounded-2xl border border-emerald-200 max-w-xs mx-auto">
-                  <div className="text-xs font-bold text-emerald-800 uppercase">Skor Simulasi CBT</div>
-                  <div className="text-4xl font-extrabold text-emerald-950 font-mono mt-1">{cbtScore} / 100</div>
-                  <div className="text-[11px] text-emerald-700 font-semibold mt-1">Predikat: Mumtaz (Istimewa)</div>
-                </div>
-
-                <button
-                  onClick={() => setCbtModalOpen(false)}
-                  className="px-6 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl cursor-pointer"
-                >
-                  Tutup Hasil Ujian
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
+        <CbtExamModal
+          student={student}
+          isOpen={cbtModalOpen}
+          onClose={() => setCbtModalOpen(false)}
+        />
       )}
     </div>
   );

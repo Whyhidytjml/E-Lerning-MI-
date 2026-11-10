@@ -33,6 +33,7 @@ export interface Student {
   name: string;
   nickname: string;
   grade: number; // 1 to 6
+  gradeLevel?: number;
   gradeLabel: string; // e.g. "Kelas 2 Ali bin Abi Thalib" or "Kelas 5 Ibnu Sina"
   avatar: string;
   points: number;
@@ -241,6 +242,27 @@ export interface ExamSchedule {
   grade: number;
 }
 
+export interface MaterialPage {
+  pageNumber: number;
+  heading: string;
+  subheading?: string;
+  paragraphs: string[];
+  keyPoints?: string[];
+  arabicText?: string;
+  verseTranslation?: string;
+  exercisePrompt?: string;
+  exerciseAnswer?: string;
+}
+
+export interface MaterialSlide {
+  slideNumber: number;
+  title: string;
+  subtitle?: string;
+  bullets: string[];
+  highlightText?: string;
+  reflectionQuestion?: string;
+}
+
 export interface LearningMaterial {
   id: string;
   title: string;
@@ -258,5 +280,39 @@ export interface LearningMaterial {
   documentFileName?: string;
   documentFileSize?: string;
   contentBody?: string;
+  pages?: MaterialPage[];
+  slides?: MaterialSlide[];
+  videoDuration?: string;
+  audioDuration?: string;
+  keyTakeaways?: string[];
 }
+
+export interface LessonSession {
+  id?: string;
+  period?: number;
+  time?: string;
+  timeSlot?: string;
+  periodLabel?: string;
+  subjectId?: string;
+  subjectName: string;
+  subjectArabic?: string;
+  category: SubjectCategory;
+  teacherId?: string;
+  teacherName: string;
+  room: string;
+  icon?: string;
+  iconName?: string;
+  color?: string;
+  focusTopic?: string;
+}
+
+export interface DayLessonSchedule {
+  day?: 'Senin' | 'Selasa' | 'Rabu' | 'Kamis' | 'Jumat' | 'Sabtu' | string;
+  dayName?: string;
+  dateLabel?: string;
+  dayArabic: string;
+  morningHabit: string;
+  sessions: LessonSession[];
+}
+
 
