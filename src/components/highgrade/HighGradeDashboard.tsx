@@ -42,7 +42,9 @@ export const HighGradeDashboard: React.FC<HighGradeDashboardProps> = ({
   onNavigateTab
 }) => {
   const [activeView, setActiveView] = useState<'tugas' | 'modul_guru' | 'jadwal'>('tugas');
-  const [assignments, setAssignments] = useState<Assignment[]>(mockAssignments);
+  const [assignments, setAssignments] = useState<Assignment[]>(() => 
+    mockAssignments.filter(a => a.grade === student.grade)
+  );
   const [selectedAssignment, setSelectedAssignment] = useState<Assignment | null>(null);
 
   // Determine current day for schedule
@@ -788,6 +790,7 @@ export const HighGradeDashboard: React.FC<HighGradeDashboardProps> = ({
         <MaterialReaderModal
           material={selectedModule}
           isOpen={Boolean(selectedModule)}
+          studentGrade={student.grade}
           onClose={() => setSelectedModule(null)}
           onComplete={() => {
             setSelectedModule(null);

@@ -648,6 +648,7 @@ export const LowGradeDashboard: React.FC<LowGradeDashboardProps> = ({
         <MaterialReaderModal
           material={selectedMaterial}
           isOpen={Boolean(selectedMaterial)}
+          studentGrade={student.grade}
           onClose={() => setSelectedMaterial(null)}
           onComplete={(earnedStars, earnedPoints) => {
             onUpdateStats(earnedStars, earnedPoints);

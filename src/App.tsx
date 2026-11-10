@@ -160,7 +160,11 @@ export default function App() {
             )}
 
             {activeTab === 'kurikulum' && (
-              <SubjectCurriculumView />
+              <SubjectCurriculumView 
+                studentGrade={currentRole === 'siswa_tinggi' ? highGradeStudent.grade : lowGradeStudent.grade}
+                studentName={currentRole === 'siswa_tinggi' ? highGradeStudent.name : lowGradeStudent.name}
+                isStudent={true}
+              />
             )}
 
             {activeTab === 'tahfiz' && (

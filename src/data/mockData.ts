@@ -749,6 +749,45 @@ export const mockAssignments: Assignment[] = [
     instructions: "Buat bagan rantai makanan produsen, konsumen tingkat 1, dan pengurai yang kalian temukan di kebun madrasah.",
     submissionFormat: 'dokumen',
     status: 'belum_selesai'
+  },
+  {
+    id: 'asg_06',
+    title: "Mufrodat & Kalimat Bahasa Arab Waktu Shalat",
+    subjectId: 'sbj_arab',
+    subjectName: "Bahasa Arab",
+    category: 'kemenag',
+    grade: 5,
+    dueDate: '2026-11-11',
+    points: 100,
+    instructions: "Tuliskan 5 kalimat bahasa Arab yang menggunakan kosakata jam (As-Saa'ah) saat shalat lima waktu.",
+    submissionFormat: 'dokumen',
+    status: 'belum_selesai'
+  },
+  {
+    id: 'asg_07',
+    title: "Latihan Soal Cerita Operasi Pecahan & Skala",
+    subjectId: 'sbj_matematika',
+    subjectName: "Matematika",
+    category: 'umum',
+    grade: 5,
+    dueDate: '2026-11-12',
+    points: 100,
+    instructions: "Selesaikan 4 soal cerita penjumlahan pecahan dan hitung jarak sebenarnya pada peta madrasah.",
+    submissionFormat: 'dokumen',
+    status: 'belum_selesai'
+  },
+  {
+    id: 'asg_08',
+    title: "Infografis Nilai Karakter Khulafaur Rasyidin",
+    subjectId: 'sbj_ski',
+    subjectName: "Sejarah Kebudayaan Islam",
+    category: 'kemenag',
+    grade: 5,
+    dueDate: '2026-11-13',
+    points: 100,
+    instructions: "Rangkum sifat kepemimpinan Khalifah Abu Bakar Ash-Shiddiq dan Umar bin Khattab dalam sebuah bagan ringkas.",
+    submissionFormat: 'dokumen',
+    status: 'belum_selesai'
   }
 ];
 

@@ -32,9 +32,21 @@ import {
 import { soundEngine } from '../utils/audio';
 import confetti from 'canvas-confetti';
 
-export const SubjectCurriculumView: React.FC = () => {
+interface SubjectCurriculumViewProps {
+  studentGrade?: number;
+  studentName?: string;
+  isStudent?: boolean;
+}
+
+export const SubjectCurriculumView: React.FC<SubjectCurriculumViewProps> = ({
+  studentGrade,
+  studentName,
+  isStudent = false
+}) => {
   const [activeCategory, setActiveCategory] = useState<SubjectCategory | 'semua'>('semua');
-  const [gradeFilter, setGradeFilter] = useState<number | 'semua'>('semua');
+  const [gradeFilter, setGradeFilter] = useState<number | 'semua'>(() => {
+    return isStudent && studentGrade ? studentGrade : 'semua';
+  });
   const [selectedSubject, setSelectedSubject] = useState<Subject | null>(null);
 
   // Synchronized subjects from Admin Master Table
@@ -43,6 +55,13 @@ export const SubjectCurriculumView: React.FC = () => {
   // Synchronized materials directly from teacher's uploads
   const [materials, setMaterials] = useState<LearningMaterial[]>(() => getStoredMaterials());
   const [selectedModule, setSelectedModule] = useState<LearningMaterial | null>(null);
+
+  // Keep gradeFilter strictly locked if isStudent is true
+  useEffect(() => {
+    if (isStudent && studentGrade) {
+      setGradeFilter(studentGrade);
+    }
+  }, [isStudent, studentGrade]);
 
   useEffect(() => {
     const handleMaterialsSync = () => {
@@ -95,9 +114,10 @@ export const SubjectCurriculumView: React.FC = () => {
   const umumSubjects = filteredSubjects.filter(s => s.category === 'umum');
 
   // Filter materials based on category and grade filter
+  const effectiveGrade = isStudent && studentGrade ? studentGrade : gradeFilter;
   const filteredTeacherMaterials = materials.filter(m => {
     const matchesCat = activeCategory === 'semua' || m.category === activeCategory;
-    const matchesGrade = gradeFilter === 'semua' || m.grade === 0 || m.grade === gradeFilter;
+    const matchesGrade = effectiveGrade === 'semua' ? true : m.grade === effectiveGrade;
     return matchesCat && matchesGrade;
   });
 
@@ -153,25 +173,31 @@ export const SubjectCurriculumView: React.FC = () => {
             </button>
           </div>
 
-          {/* Grade Level Selector */}
+          {/* Grade Level Display / Selector */}
           <div className="flex items-center gap-2 text-xs text-emerald-100">
             <span>Tingkat Kelas:</span>
-            <select
-              value={gradeFilter}
-              onChange={(e) => {
-                soundEngine.playClick();
-                setGradeFilter(e.target.value === 'semua' ? 'semua' : Number(e.target.value));
-              }}
-              className="bg-emerald-950/60 border border-emerald-700/60 text-white rounded-lg px-2.5 py-1 text-xs cursor-pointer focus:outline-hidden"
-            >
-              <option value="semua">Semua Tingkat (1–6)</option>
-              <option value="1">Kelas 1 (Fase A)</option>
-              <option value="2">Kelas 2 (Fase A)</option>
-              <option value="3">Kelas 3 (Fase B)</option>
-              <option value="4">Kelas 4 (Fase B)</option>
-              <option value="5">Kelas 5 (Fase C)</option>
-              <option value="6">Kelas 6 (Fase C)</option>
-            </select>
+            {isStudent && studentGrade ? (
+              <div className="bg-emerald-950/80 border border-emerald-400 text-emerald-200 rounded-lg px-3 py-1 font-bold flex items-center gap-1.5 shadow-2xs">
+                <span>🔒 Kelas {studentGrade} (Akses Khusus Terkunci)</span>
+              </div>
+            ) : (
+              <select
+                value={gradeFilter}
+                onChange={(e) => {
+                  soundEngine.playClick();
+                  setGradeFilter(e.target.value === 'semua' ? 'semua' : Number(e.target.value));
+                }}
+                className="bg-emerald-950/60 border border-emerald-700/60 text-white rounded-lg px-2.5 py-1 text-xs cursor-pointer focus:outline-hidden"
+              >
+                <option value="semua">Semua Tingkat (1–6)</option>
+                <option value="1">Kelas 1 (Fase A)</option>
+                <option value="2">Kelas 2 (Fase A)</option>
+                <option value="3">Kelas 3 (Fase B)</option>
+                <option value="4">Kelas 4 (Fase B)</option>
+                <option value="5">Kelas 5 (Fase C)</option>
+                <option value="6">Kelas 6 (Fase C)</option>
+              </select>
+            )}
           </div>
         </div>
       </div>
@@ -432,19 +458,26 @@ export const SubjectCurriculumView: React.FC = () => {
             <div>
               <div className="flex items-center justify-between mb-3">
                 <h4 className="text-xs font-bold uppercase tracking-wider text-emerald-800">
-                  Modul & Materi Unggahan Guru ({materials.filter(m => m.subjectName === selectedSubject.name || m.subjectId === selectedSubject.id).length})
+                  {isStudent && studentGrade
+                    ? `Modul & Materi Kelas ${studentGrade} (${materials.filter(m => (m.subjectName === selectedSubject.name || m.subjectId === selectedSubject.id) && m.grade === studentGrade).length})`
+                    : `Modul & Materi Unggahan Guru (${materials.filter(m => (m.subjectName === selectedSubject.name || m.subjectId === selectedSubject.id) && (gradeFilter === 'semua' || m.grade === gradeFilter)).length})`
+                  }
                 </h4>
-                <span className="text-[11px] text-slate-400">Tersinkronisasi Langsung</span>
+                <span className="text-[11px] text-slate-400">
+                  {isStudent && studentGrade ? `🔒 Terkunci Kelas ${studentGrade}` : 'Tersinkronisasi Langsung'}
+                </span>
               </div>
 
-              {materials.filter(m => m.subjectName === selectedSubject.name || m.subjectId === selectedSubject.id).length === 0 ? (
+              {materials.filter(m => (m.subjectName === selectedSubject.name || m.subjectId === selectedSubject.id) && (isStudent && studentGrade ? m.grade === studentGrade : (gradeFilter === 'semua' || m.grade === gradeFilter))).length === 0 ? (
                 <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 text-center text-xs text-slate-500">
-                  Belum ada berkas unggahan khusus untuk mata pelajaran ini. Silakan akses daftar modul utama di beranda materi.
+                  {isStudent && studentGrade
+                    ? `Belum ada modul resmi khusus untuk Kelas ${studentGrade} pada mata pelajaran ini.`
+                    : 'Belum ada berkas unggahan khusus untuk mata pelajaran ini.'}
                 </div>
               ) : (
                 <div className="space-y-2.5">
                   {materials
-                    .filter(m => m.subjectName === selectedSubject.name || m.subjectId === selectedSubject.id)
+                    .filter(m => (m.subjectName === selectedSubject.name || m.subjectId === selectedSubject.id) && (isStudent && studentGrade ? m.grade === studentGrade : (gradeFilter === 'semua' || m.grade === gradeFilter)))
                     .map((mat) => (
                       <div
                         key={mat.id}

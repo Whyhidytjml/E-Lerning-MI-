@@ -36,6 +36,7 @@ interface MaterialReaderModalProps {
   onClose: () => void;
   onComplete?: (earnedStars: number, earnedPoints: number) => void;
   isCompleted?: boolean;
+  studentGrade?: number;
 }
 
 export const MaterialReaderModal: React.FC<MaterialReaderModalProps> = ({
@@ -43,7 +44,8 @@ export const MaterialReaderModal: React.FC<MaterialReaderModalProps> = ({
   isOpen,
   onClose,
   onComplete,
-  isCompleted = false
+  isCompleted = false,
+  studentGrade
 }) => {
   // Pagination for pages / slides (always declared unconditionally)
   const [currentPage, setCurrentPage] = useState<number>(1);
@@ -161,6 +163,36 @@ export const MaterialReaderModal: React.FC<MaterialReaderModalProps> = ({
 
   // Return null ONLY after all hooks have been unconditionally called
   if (!isOpen || !material) return null;
+
+  // Strict Class Protection Guard: If student's grade does not match material grade, block access
+  if (studentGrade && material.grade && material.grade !== studentGrade) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 animate-in fade-in">
+        <div className="bg-white rounded-3xl max-w-md w-full p-6 sm:p-8 shadow-2xl border border-rose-200 text-center space-y-4">
+          <div className="w-16 h-16 rounded-2xl bg-rose-100 text-rose-700 flex items-center justify-center text-3xl mx-auto shadow-xs">
+            🔒
+          </div>
+          <div>
+            <span className="text-[10px] font-black uppercase tracking-widest text-rose-600 bg-rose-50 px-2.5 py-1 rounded-full border border-rose-200">
+              Akses Dibatasi Khusus Kelas
+            </span>
+            <h3 className="text-lg font-bold font-serif text-slate-900 mt-2">
+              Materi Bukan untuk Kelas {studentGrade}
+            </h3>
+            <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+              Modul <em>"{material.title}"</em> diperuntukkan khusus bagi santri <strong>Kelas {material.grade}</strong>, sedangkan akun Anda terdaftar di <strong>Kelas {studentGrade}</strong>. Sesuai kurikulum madrasah, santri hanya dapat mengakses materi di kelasnya.
+            </p>
+          </div>
+          <button
+            onClick={handleClose}
+            className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl cursor-pointer transition-colors shadow-sm"
+          >
+            Tutup & Kembali ke Materi Kelas {studentGrade}
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const totalPages = material.pages?.length || 1;
   const totalSlides = material.slides?.length || 1;
