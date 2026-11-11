@@ -131,6 +131,14 @@ export const Header: React.FC<HeaderProps> = ({
             Materi & Jadwal Ajar
           </button>
           <button
+            onClick={() => { soundEngine.playClick(); onTabChange('cbt_results'); }}
+            className={`hover:text-blue-700 transition-colors whitespace-nowrap cursor-pointer pb-1 ${
+              activeTab === 'cbt_results' ? 'text-blue-800 font-bold border-b-2 border-blue-600' : ''
+            }`}
+          >
+            Hasil Simulasi CBT
+          </button>
+          <button
             onClick={() => { soundEngine.playClick(); onTabChange('bank_soal'); }}
             className={`hover:text-blue-700 transition-colors whitespace-nowrap cursor-pointer pb-1 ${
               activeTab === 'bank_soal' ? 'text-blue-800 font-bold border-b-2 border-blue-600' : ''

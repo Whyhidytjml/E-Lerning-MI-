@@ -242,6 +242,31 @@ export interface ExamSchedule {
   grade: number;
 }
 
+export interface CbtExamResult {
+  id: string;
+  studentId: string;
+  studentNis: string;
+  studentName: string;
+  studentGrade: number;
+  className: string;
+  subjectId: string;
+  subjectName: string;
+  category: SubjectCategory;
+  score: number;
+  totalQuestions: number;
+  correctCount: number;
+  wrongCount: number;
+  unansweredCount: number;
+  predicate: 'Mumtaz' | 'Jayyid Jiddan' | 'Jayyid' | 'Maqbul' | 'Perlu Bimbingan';
+  completedAt: string;
+  timestamp: number;
+  packageCode: string;
+  durationSpentMinutes: number;
+  isPassed: boolean;
+  teacherNote?: string;
+  answersSnapshot?: Record<number, number>;
+}
+
 export interface MaterialPage {
   pageNumber: number;
   heading: string;

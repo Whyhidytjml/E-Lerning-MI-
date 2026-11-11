@@ -313,13 +313,13 @@ export const LowGradeDashboard: React.FC<LowGradeDashboardProps> = ({
               </div>
               <div className="inline-block px-2.5 py-0.5 rounded-full bg-emerald-200 text-emerald-950 text-[10px] font-black uppercase tracking-wider mb-1 flex items-center gap-1 w-fit">
                 <Shuffle className="w-3 h-3 text-emerald-800" />
-                <span>30 Soal & Waktu Aktif</span>
+                <span>Per Mata Pelajaran & Timer</span>
               </div>
               <h3 className="text-lg font-black text-emerald-950">
                 Simulasi Asesmen CBT
               </h3>
               <p className="text-xs text-emerald-800 font-medium mt-1">
-                Soal acak unik anti-mencontek dan penghitung waktu aktif 30 menit.
+                Pilih mata pelajaran (Fikih, Qurdis, Matematika, dll) dengan penghitung waktu aktif.
               </p>
             </div>
             <div className="mt-5 pt-3 border-t border-emerald-300 flex items-center justify-between text-xs font-black text-emerald-900">

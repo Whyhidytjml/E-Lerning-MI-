@@ -215,7 +215,7 @@ export const HighGradeDashboard: React.FC<HighGradeDashboardProps> = ({
               className="px-4 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black rounded-2xl shadow-md transition-all flex items-center gap-2 cursor-pointer text-xs"
             >
               <FileCheck className="w-4 h-4 text-slate-950" />
-              <span>Simulasi Ujian CBT (30 Soal & Timer)</span>
+              <span>Simulasi Ujian CBT (Pilih Mata Pelajaran)</span>
             </button>
           </div>
         </div>

@@ -188,6 +188,7 @@ export default function App() {
             initialTab={
               activeTab === 'beranda' ? 'presensi' :
               activeTab === 'grading_center' ? 'grading_center' :
+              activeTab === 'cbt_results' ? 'cbt_results' :
               activeTab === 'kelola_materi' ? 'kelola_materi' :
               activeTab === 'bank_soal' ? 'bank_soal' :
               activeTab === 'penghubung' ? 'penghubung' : 'presensi'

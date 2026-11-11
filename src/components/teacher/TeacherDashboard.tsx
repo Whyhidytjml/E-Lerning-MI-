@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { 
   mockClassRoster, 
   mockTahfizSubmissions, 
@@ -8,11 +8,13 @@ import {
   mockLiaisonMessages,
   mockUserAccounts
 } from '../../data/mockData';
-import { AttendanceRecord, TahfizSubmission, MutabaahEntry, Assignment, LearningMaterial, LiaisonMessage, Subject, UserAccount } from '../../types/lms';
+import { AttendanceRecord, TahfizSubmission, MutabaahEntry, Assignment, LearningMaterial, LiaisonMessage, Subject, UserAccount, CbtExamResult } from '../../types/lms';
 import { soundEngine } from '../../utils/audio';
 import confetti from 'canvas-confetti';
 import { getStoredMaterials, saveStoredMaterials, MATERIALS_UPDATED_EVENT } from '../../utils/materialsStorage';
 import { getStoredSubjects, SUBJECTS_UPDATED_EVENT } from '../../utils/subjectsStorage';
+import { getCbtResults, updateCbtTeacherNote, CBT_RESULTS_UPDATED_EVENT } from '../../utils/cbtStorage';
+import { cbtSubjectList, getShuffledQuestionsForStudent, CbtQuestionItem } from '../../data/cbtQuestions';
 import { MaterialReaderModal } from '../common/MaterialReaderModal';
 import { 
   UserCheck, 
@@ -43,11 +45,19 @@ import {
   Send,
   Share2,
   Trash2,
-  Save
+  Save,
+  Shuffle,
+  TrendingUp,
+  Printer,
+  XCircle,
+  Eye,
+  AlertTriangle,
+  X,
+  ChevronRight
 } from 'lucide-react';
 
 interface TeacherDashboardProps {
-  initialTab?: 'presensi' | 'grading_center' | 'kelola_materi' | 'bank_soal' | 'penghubung';
+  initialTab?: 'presensi' | 'grading_center' | 'cbt_results' | 'kelola_materi' | 'bank_soal' | 'penghubung';
   messages?: LiaisonMessage[];
   onSendMessage?: (msg: LiaisonMessage) => void;
   currentUser?: UserAccount;
@@ -66,7 +76,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   const activeTeacherAvatar = currentUser?.avatar || "👳🏻‍♂️";
   const teacherAccounts = mockUserAccounts.filter(u => u.role === 'guru');
 
-  const [activeTab, setActiveTab] = useState<'presensi' | 'grading_center' | 'kelola_materi' | 'bank_soal' | 'penghubung'>(initialTab);
+  const [activeTab, setActiveTab] = useState<'presensi' | 'grading_center' | 'cbt_results' | 'kelola_materi' | 'bank_soal' | 'penghubung'>(initialTab);
   
   // Sync activeTab when initialTab changes from parent Header
   useEffect(() => {
@@ -111,6 +121,85 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
       window.removeEventListener(SUBJECTS_UPDATED_EVENT, handleSubjectsSync);
     };
   }, []);
+
+  // Persistent CBT Exam Simulation Results
+  const [cbtResults, setCbtResults] = useState<CbtExamResult[]>(() => getCbtResults());
+  const [cbtClassFilter, setCbtClassFilter] = useState<string>('all');
+  const [cbtSubjectFilter, setCbtSubjectFilter] = useState<string>('all');
+  const [cbtStatusFilter, setCbtStatusFilter] = useState<'all' | 'tuntas' | 'remidial' | 'mumtaz'>('all');
+  const [cbtSearchQuery, setCbtSearchQuery] = useState<string>('');
+  const [selectedCbtDetail, setSelectedCbtDetail] = useState<CbtExamResult | null>(null);
+  const [cbtDetailTeacherNote, setCbtDetailTeacherNote] = useState<string>('');
+  const [cbtNoteSaveToast, setCbtNoteSaveToast] = useState<boolean>(false);
+
+  // Sync CBT results across events and browser storage
+  useEffect(() => {
+    const handleCbtSync = () => {
+      setCbtResults(getCbtResults());
+    };
+    window.addEventListener(CBT_RESULTS_UPDATED_EVENT, handleCbtSync);
+    window.addEventListener('storage', handleCbtSync);
+    return () => {
+      window.removeEventListener(CBT_RESULTS_UPDATED_EVENT, handleCbtSync);
+      window.removeEventListener('storage', handleCbtSync);
+    };
+  }, []);
+
+  // Update local note state when selectedCbtDetail is opened
+  useEffect(() => {
+    if (selectedCbtDetail) {
+      setCbtDetailTeacherNote(selectedCbtDetail.teacherNote || '');
+    }
+  }, [selectedCbtDetail]);
+
+  const handleSaveCbtTeacherNote = () => {
+    if (!selectedCbtDetail) return;
+    soundEngine.playSuccess();
+    updateCbtTeacherNote(selectedCbtDetail.id, cbtDetailTeacherNote);
+    setSelectedCbtDetail((prev) => (prev ? { ...prev, teacherNote: cbtDetailTeacherNote } : null));
+    setCbtNoteSaveToast(true);
+    setTimeout(() => setCbtNoteSaveToast(false), 3000);
+  };
+
+  // Filtered CBT results
+  const filteredCbtResults = useMemo(() => {
+    return cbtResults.filter((r) => {
+      const matchClass =
+        cbtClassFilter === 'all' ||
+        (cbtClassFilter === '2' && r.studentGrade === 2) ||
+        (cbtClassFilter === '5' && r.studentGrade === 5);
+      const matchSubject = cbtSubjectFilter === 'all' || r.subjectId === cbtSubjectFilter;
+      const matchStatus =
+        cbtStatusFilter === 'all' ||
+        (cbtStatusFilter === 'tuntas' && r.isPassed) ||
+        (cbtStatusFilter === 'remidial' && !r.isPassed) ||
+        (cbtStatusFilter === 'mumtaz' && r.predicate === 'Mumtaz');
+      const matchSearch =
+        !cbtSearchQuery.trim() ||
+        r.studentName.toLowerCase().includes(cbtSearchQuery.toLowerCase()) ||
+        r.studentNis.toLowerCase().includes(cbtSearchQuery.toLowerCase()) ||
+        r.subjectName.toLowerCase().includes(cbtSearchQuery.toLowerCase());
+
+      return matchClass && matchSubject && matchStatus && matchSearch;
+    });
+  }, [cbtResults, cbtClassFilter, cbtSubjectFilter, cbtStatusFilter, cbtSearchQuery]);
+
+  // CBT Summary Statistics
+  const cbtStats = useMemo(() => {
+    const total = cbtResults.length;
+    if (total === 0) return { total: 0, avgScore: 0, passRate: 0, mumtazCount: 0, remidialCount: 0 };
+    const sumScore = cbtResults.reduce((acc, curr) => acc + curr.score, 0);
+    const passedCount = cbtResults.filter((r) => r.isPassed).length;
+    const mumtazCount = cbtResults.filter((r) => r.predicate === 'Mumtaz').length;
+    const remidialCount = total - passedCount;
+    return {
+      total,
+      avgScore: Math.round(sumScore / total),
+      passRate: Math.round((passedCount / total) * 100),
+      mumtazCount,
+      remidialCount
+    };
+  }, [cbtResults]);
 
   // Selected for evaluation
   const [selectedSubmission, setSelectedSubmission] = useState<TahfizSubmission | null>(null);
@@ -471,6 +560,18 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
           >
             <Scale className="w-3.5 h-3.5 text-amber-400" />
             <span>Pusat Penilaian (Grading Center)</span>
+          </button>
+          <button
+            onClick={() => { soundEngine.playClick(); setActiveTab('cbt_results'); }}
+            className={`px-4 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
+              activeTab === 'cbt_results' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-300 hover:text-white'
+            }`}
+          >
+            <Shuffle className="w-3.5 h-3.5 text-emerald-400" />
+            <span>📊 Hasil Simulasi CBT</span>
+            <span className="px-1.5 py-0.2 bg-emerald-500 text-slate-950 text-[10px] rounded-full font-black ml-1">
+              {cbtResults.length}
+            </span>
           </button>
           <button
             onClick={() => { soundEngine.playClick(); setActiveTab('kelola_materi'); }}
@@ -969,6 +1070,355 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* TAB: HASIL SIMULASI CBT SANTRI */}
+      {activeTab === 'cbt_results' && (
+        <div className="space-y-6 animate-in fade-in">
+          
+          {/* Header Card */}
+          <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-2xs space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold">
+                    <Shuffle className="w-4 h-4" />
+                  </span>
+                  <h3 className="font-bold text-slate-900 text-lg font-serif">
+                    Rekapitulasi & Analisis Hasil Simulasi CBT Santri
+                  </h3>
+                </div>
+                <p className="text-xs text-slate-500 mt-1">
+                  Pantau perolehan nilai simulasi asesmen per mata pelajaran, tingkat ketuntasan KKM (70), serta lembar jawaban santri secara real-time.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    soundEngine.playSuccess();
+                    const headers = ['NIS', 'Nama Santri', 'Kelas', 'Mata Pelajaran', 'Skor', 'Benar', 'Salah', 'Predikat', 'Status KKM', 'Tanggal Selesai', 'Kode Paket'];
+                    const rows = filteredCbtResults.map((r: CbtExamResult) => [
+                      r.studentNis,
+                      `"${r.studentName}"`,
+                      `"${r.className}"`,
+                      `"${r.subjectName}"`,
+                      r.score,
+                      r.correctCount,
+                      r.wrongCount,
+                      r.predicate,
+                      r.isPassed ? 'Tuntas' : 'Remidial',
+                      `"${r.completedAt}"`,
+                      r.packageCode
+                    ]);
+                    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((e: (string | number)[]) => e.join(','))].join('\n');
+                    const encodedUri = encodeURI(csvContent);
+                    const link = document.createElement('a');
+                    link.setAttribute('href', encodedUri);
+                    link.setAttribute('download', `Rekap_Hasil_CBT_MI_Darul_Ulum_${Date.now()}.csv`);
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                  }}
+                  className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-colors shadow-2xs"
+                >
+                  <Download className="w-3.5 h-3.5 text-slate-600" />
+                  <span>Ekspor CSV</span>
+                </button>
+                <button
+                  onClick={() => {
+                    soundEngine.playClick();
+                    window.print();
+                  }}
+                  className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-xs transition-colors"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  <span>Cetak Rekap</span>
+                </button>
+              </div>
+            </div>
+
+            {/* KPI Metric Cards */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="p-4 rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-100 space-y-1">
+                <div className="text-[11px] font-bold text-emerald-800 uppercase tracking-wider flex items-center justify-between">
+                  <span>Total Sesi Ujian</span>
+                  <FileCheck2 className="w-4 h-4 text-emerald-600" />
+                </div>
+                <div className="text-2xl sm:text-3xl font-black font-mono text-emerald-950">
+                  {cbtStats.total} <span className="text-xs font-semibold text-emerald-700">Selesai</span>
+                </div>
+                <div className="text-[11px] text-emerald-700">
+                  Tersimpan di sistem madrasah
+                </div>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-100 space-y-1">
+                <div className="text-[11px] font-bold text-blue-800 uppercase tracking-wider flex items-center justify-between">
+                  <span>Rata-Rata Nilai</span>
+                  <TrendingUp className="w-4 h-4 text-blue-600" />
+                </div>
+                <div className="text-2xl sm:text-3xl font-black font-mono text-blue-950">
+                  {cbtStats.avgScore} <span className="text-xs font-semibold text-blue-700">/ 100</span>
+                </div>
+                <div className="text-[11px] text-blue-700">
+                  Rata-rata seluruh mapel
+                </div>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-gradient-to-br from-amber-50 to-yellow-50 border border-amber-100 space-y-1">
+                <div className="text-[11px] font-bold text-amber-800 uppercase tracking-wider flex items-center justify-between">
+                  <span>Ketuntasan KKM (≥70)</span>
+                  <Award className="w-4 h-4 text-amber-600" />
+                </div>
+                <div className="text-2xl sm:text-3xl font-black font-mono text-amber-950">
+                  {cbtStats.passRate}%
+                </div>
+                <div className="text-[11px] text-amber-700">
+                  {cbtStats.total - cbtStats.remidialCount} santri tuntas KKM
+                </div>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-gradient-to-br from-purple-50 to-pink-50 border border-purple-100 space-y-1">
+                <div className="text-[11px] font-bold text-purple-800 uppercase tracking-wider flex items-center justify-between">
+                  <span>Predikat Mumtaz</span>
+                  <Sparkles className="w-4 h-4 text-purple-600" />
+                </div>
+                <div className="text-2xl sm:text-3xl font-black font-mono text-purple-950">
+                  {cbtStats.mumtazCount} <span className="text-xs font-semibold text-purple-700">Santri</span>
+                </div>
+                <div className="text-[11px] text-purple-700">
+                  Nilai sangat istimewa (≥ 90)
+                </div>
+              </div>
+            </div>
+
+            {/* Remedial Warning Notice if any student needs attention */}
+            {cbtStats.remidialCount > 0 && (
+              <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center font-bold shrink-0">
+                    <AlertTriangle className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <strong className="text-rose-950 font-bold block">
+                      Perhatian Guru: Ada {cbtStats.remidialCount} Hasil Ujian Di Bawah KKM (&lt; 70)
+                    </strong>
+                    <span className="text-rose-700">
+                      Santri memerlukan pendampingan remidial dan pembahasan modul penguatan materi.
+                    </span>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => {
+                    soundEngine.playClick();
+                    setCbtStatusFilter('remidial');
+                  }}
+                  className="px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold cursor-pointer transition-colors self-start sm:self-auto shrink-0"
+                >
+                  Tampilkan Santri Remidial
+                </button>
+              </div>
+            )}
+
+            {/* Filter & Search Bar */}
+            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-2 flex-1">
+                {/* Search */}
+                <div className="relative min-w-[200px] flex-1 sm:flex-none">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3" />
+                  <input
+                    type="text"
+                    value={cbtSearchQuery}
+                    onChange={(e) => setCbtSearchQuery(e.target.value)}
+                    placeholder="Cari santri / NIS / mapel..."
+                    className="w-full pl-9 pr-3 py-2 bg-white rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
+                  />
+                </div>
+
+                {/* Filter Kelas */}
+                <select
+                  value={cbtClassFilter}
+                  onChange={(e) => {
+                    soundEngine.playClick();
+                    setCbtClassFilter(e.target.value);
+                  }}
+                  className="px-3 py-2 bg-white rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 focus:outline-hidden cursor-pointer"
+                >
+                  <option value="all">Semua Kelas</option>
+                  <option value="2">Kelas 2 Ali bin Abi Thalib</option>
+                  <option value="5">Kelas 5 Siti Khadijah</option>
+                </select>
+
+                {/* Filter Mapel */}
+                <select
+                  value={cbtSubjectFilter}
+                  onChange={(e) => {
+                    soundEngine.playClick();
+                    setCbtSubjectFilter(e.target.value);
+                  }}
+                  className="px-3 py-2 bg-white rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 focus:outline-hidden cursor-pointer"
+                >
+                  <option value="all">Semua Mata Pelajaran</option>
+                  {cbtSubjectList.map((s) => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                  <option value="all_pkg">Paket Terpadu (Semua Mapel)</option>
+                </select>
+
+                {/* Filter Status */}
+                <select
+                  value={cbtStatusFilter}
+                  onChange={(e) => {
+                    soundEngine.playClick();
+                    setCbtStatusFilter(e.target.value as any);
+                  }}
+                  className="px-3 py-2 bg-white rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 focus:outline-hidden cursor-pointer"
+                >
+                  <option value="all">Semua Status Kelulusan</option>
+                  <option value="tuntas">✓ Tuntas KKM (≥ 70)</option>
+                  <option value="remidial">⚠️ Perlu Remidial (&lt; 70)</option>
+                  <option value="mumtaz">🏆 Mumtaz (≥ 90)</option>
+                </select>
+
+                {(cbtClassFilter !== 'all' || cbtSubjectFilter !== 'all' || cbtStatusFilter !== 'all' || cbtSearchQuery) && (
+                  <button
+                    onClick={() => {
+                      soundEngine.playClick();
+                      setCbtClassFilter('all');
+                      setCbtSubjectFilter('all');
+                      setCbtStatusFilter('all');
+                      setCbtSearchQuery('');
+                    }}
+                    className="px-3 py-2 rounded-xl text-slate-500 hover:text-slate-800 text-xs font-bold cursor-pointer"
+                  >
+                    Reset Filter
+                  </button>
+                )}
+              </div>
+
+              <div className="text-xs font-bold text-slate-500">
+                Menampilkan <strong className="text-slate-800">{filteredCbtResults.length}</strong> dari {cbtResults.length} data
+              </div>
+            </div>
+
+            {/* Results Table */}
+            <div className="overflow-x-auto rounded-2xl border border-slate-200">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase tracking-wider text-[10px]">
+                  <tr>
+                    <th className="p-3.5">Santri</th>
+                    <th className="p-3.5">Kelas</th>
+                    <th className="p-3.5">Mata Pelajaran</th>
+                    <th className="p-3.5 text-center">Jawaban (B/S)</th>
+                    <th className="p-3.5">Nilai CBT</th>
+                    <th className="p-3.5">Predikat & Status</th>
+                    <th className="p-3.5">Waktu Selesai</th>
+                    <th className="p-3.5 text-right">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {filteredCbtResults.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="p-8 text-center text-slate-400">
+                        Tidak ada riwayat hasil simulasi CBT yang sesuai dengan filter pencarian.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredCbtResults.map((res: CbtExamResult) => {
+                      return (
+                        <tr key={res.id} className="hover:bg-slate-50/80 transition-colors">
+                          <td className="p-3.5 font-medium">
+                            <div className="flex items-center gap-2.5">
+                              <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-900 flex items-center justify-center font-bold text-xs shrink-0">
+                                {res.studentName.charAt(0)}
+                              </div>
+                              <div>
+                                <div className="font-bold text-slate-900">{res.studentName}</div>
+                                <div className="text-[10px] text-slate-400 font-mono">NIS: {res.studentNis}</div>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="p-3.5 whitespace-nowrap">
+                            <span className="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 text-[10px] font-bold border border-slate-200">
+                              {res.className}
+                            </span>
+                          </td>
+                          <td className="p-3.5 whitespace-nowrap">
+                            <div className="flex items-center gap-1.5">
+                              <span className={`w-2 h-2 rounded-full ${res.category === 'kemenag' ? 'bg-emerald-500' : 'bg-blue-500'}`} />
+                              <span className="font-bold text-slate-800">{res.subjectName}</span>
+                            </div>
+                            <span className="text-[10px] text-slate-400 font-mono">
+                              {res.packageCode} • {res.durationSpentMinutes} menit
+                            </span>
+                          </td>
+                          <td className="p-3.5 text-center whitespace-nowrap">
+                            <span className="font-mono text-emerald-700 font-bold">{res.correctCount}</span>
+                            <span className="text-slate-400"> / </span>
+                            <span className="font-mono text-rose-600 font-bold">{res.wrongCount}</span>
+                            <div className="text-[9px] text-slate-400">dari {res.totalQuestions} soal</div>
+                          </td>
+                          <td className="p-3.5 whitespace-nowrap">
+                            <div className="flex items-center gap-2">
+                              <span className={`text-base font-black font-mono ${res.isPassed ? 'text-emerald-700' : 'text-rose-600'}`}>
+                                {res.score}
+                              </span>
+                              <div className="w-16 bg-slate-100 h-2 rounded-full overflow-hidden">
+                                <div
+                                  className={`h-full ${res.isPassed ? 'bg-emerald-500' : 'bg-rose-500'}`}
+                                  style={{ width: `${res.score}%` }}
+                                />
+                              </div>
+                            </div>
+                          </td>
+                          <td className="p-3.5 whitespace-nowrap">
+                            <div className="space-y-0.5">
+                              <span
+                                className={`px-2 py-0.5 rounded-md font-bold text-[10px] inline-block ${
+                                  res.predicate === 'Mumtaz'
+                                    ? 'bg-purple-100 text-purple-900 border border-purple-200'
+                                    : res.predicate === 'Jayyid Jiddan'
+                                    ? 'bg-blue-100 text-blue-900 border border-blue-200'
+                                    : res.predicate === 'Jayyid'
+                                    ? 'bg-emerald-100 text-emerald-900 border border-emerald-200'
+                                    : 'bg-rose-100 text-rose-900 border border-rose-200'
+                                }`}
+                              >
+                                {res.predicate}
+                              </span>
+                              <div className={`text-[10px] font-semibold ${res.isPassed ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                {res.isPassed ? '✓ Tuntas KKM' : '⚠️ Butuh Remidial'}
+                              </div>
+                            </div>
+                          </td>
+                          <td className="p-3.5 text-slate-500 text-[11px] whitespace-nowrap">
+                            {res.completedAt}
+                          </td>
+                          <td className="p-3.5 text-right whitespace-nowrap">
+                            <button
+                              onClick={() => {
+                                soundEngine.playClick();
+                                setSelectedCbtDetail(res);
+                              }}
+                              className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-emerald-700 text-white text-xs font-bold transition-all cursor-pointer shadow-xs flex items-center gap-1.5 ml-auto"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                              <span>Lihat Lembar Jawaban</span>
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+          </div>
+
         </div>
       )}
 
@@ -1534,6 +1984,239 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
           isOpen={Boolean(previewMaterial)}
           onClose={() => setPreviewMaterial(null)}
         />
+      )}
+
+      {/* ================= MODAL DETAIL LEMBAR HASIL CBT SANTRI ================= */}
+      {selectedCbtDetail && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-3 sm:p-5 animate-in fade-in">
+          <div className="bg-white rounded-3xl max-w-4xl w-full max-h-[95vh] shadow-2xl border border-slate-100 flex flex-col overflow-hidden">
+            
+            {/* Modal Header */}
+            <div className="p-4 sm:p-5 border-b border-slate-200 bg-gradient-to-r from-slate-900 via-emerald-950 to-slate-900 text-white flex items-center justify-between gap-3 shrink-0">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="px-2.5 py-0.5 rounded-full bg-emerald-500 text-slate-950 font-black text-[10px] tracking-wide uppercase flex items-center gap-1 shadow-xs">
+                    <CheckCircle2 className="w-3 h-3" />
+                    <span>Lembar Jawaban Santri</span>
+                  </span>
+                  <span className="px-2.5 py-0.5 rounded-full bg-white/10 text-emerald-300 font-mono text-[10px] border border-white/20">
+                    Paket: {selectedCbtDetail.packageCode}
+                  </span>
+                </div>
+                <h3 className="text-base sm:text-lg font-bold font-serif text-white">
+                  Evaluasi CBT: {selectedCbtDetail.studentName} ({selectedCbtDetail.className})
+                </h3>
+                <p className="text-xs text-emerald-300">
+                  Mata Pelajaran: <strong>{selectedCbtDetail.subjectName}</strong> • Diselesaikan: {selectedCbtDetail.completedAt}
+                </p>
+              </div>
+
+              <button
+                onClick={() => setSelectedCbtDetail(null)}
+                className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Score & Summary Banner */}
+            <div className="p-4 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-4 shrink-0">
+              <div className="flex items-center gap-4">
+                <div className="flex items-baseline gap-1">
+                  <span className={`text-3xl font-black font-mono ${selectedCbtDetail.isPassed ? 'text-emerald-700' : 'text-rose-600'}`}>
+                    {selectedCbtDetail.score}
+                  </span>
+                  <span className="text-xs font-bold text-slate-400">/ 100</span>
+                </div>
+
+                <div className="space-y-0.5">
+                  <span
+                    className={`px-2.5 py-0.5 rounded-md font-bold text-xs inline-block ${
+                      selectedCbtDetail.predicate === 'Mumtaz'
+                        ? 'bg-purple-100 text-purple-900 border border-purple-200'
+                        : selectedCbtDetail.predicate === 'Jayyid Jiddan'
+                        ? 'bg-blue-100 text-blue-900 border border-blue-200'
+                        : selectedCbtDetail.predicate === 'Jayyid'
+                        ? 'bg-emerald-100 text-emerald-900 border border-emerald-200'
+                        : 'bg-rose-100 text-rose-900 border border-rose-200'
+                    }`}
+                  >
+                    Predikat: {selectedCbtDetail.predicate}
+                  </span>
+                  <div className={`text-xs font-bold ${selectedCbtDetail.isPassed ? 'text-emerald-700' : 'text-rose-600'}`}>
+                    {selectedCbtDetail.isPassed ? '✓ Memenuhi Standar KKM (≥ 70)' : '⚠️ Belum Tuntas KKM - Perlu Remidial'}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3 text-xs text-slate-600">
+                <div className="p-2 bg-white rounded-xl border border-slate-200 text-center">
+                  <span className="text-[10px] text-slate-400 block">Total Soal</span>
+                  <strong className="font-mono text-slate-800">{selectedCbtDetail.totalQuestions}</strong>
+                </div>
+                <div className="p-2 bg-white rounded-xl border border-slate-200 text-center">
+                  <span className="text-[10px] text-emerald-600 block">Benar</span>
+                  <strong className="font-mono text-emerald-700">{selectedCbtDetail.correctCount}</strong>
+                </div>
+                <div className="p-2 bg-white rounded-xl border border-slate-200 text-center">
+                  <span className="text-[10px] text-rose-500 block">Salah</span>
+                  <strong className="font-mono text-rose-600">{selectedCbtDetail.wrongCount}</strong>
+                </div>
+                <div className="p-2 bg-white rounded-xl border border-slate-200 text-center">
+                  <span className="text-[10px] text-slate-400 block">Durasi</span>
+                  <strong className="font-mono text-slate-800">{selectedCbtDetail.durationSpentMinutes} Menit</strong>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Body: Question Answers & Teacher Note */}
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
+              
+              {/* Teacher Feedback / Notes Section */}
+              <div className="p-4 rounded-2xl bg-amber-50/70 border border-amber-200 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-amber-900 flex items-center gap-1.5">
+                    <Edit3 className="w-3.5 h-3.5 text-amber-700" />
+                    <span>Catatan & Rekomendasi Guru untuk Santri Ini:</span>
+                  </span>
+                  {cbtNoteSaveToast && (
+                    <span className="text-[11px] font-bold text-emerald-700 animate-in fade-in">
+                      ✓ Catatan berhasil disimpan!
+                    </span>
+                  )}
+                </div>
+                <textarea
+                  value={cbtDetailTeacherNote}
+                  onChange={(e) => setCbtDetailTeacherNote(e.target.value)}
+                  placeholder="Ketik catatan evaluasi, motivasi, atau arahan remidial untuk santri..."
+                  rows={2}
+                  className="w-full p-2.5 bg-white rounded-xl border border-amber-200 text-xs focus:ring-2 focus:ring-amber-500 focus:outline-hidden"
+                />
+                <div className="flex justify-end">
+                  <button
+                    onClick={handleSaveCbtTeacherNote}
+                    className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-xs transition-colors"
+                  >
+                    <Save className="w-3.5 h-3.5" />
+                    <span>Simpan Catatan Guru</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Questions List with Student Answers */}
+              <div className="space-y-4">
+                <div className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                  <BookOpen className="w-4 h-4 text-emerald-700" />
+                  <span>Daftar Butir Soal & Jawaban Santri:</span>
+                </div>
+
+                {(() => {
+                  const examQuestions = getShuffledQuestionsForStudent(
+                    selectedCbtDetail.studentNis,
+                    0,
+                    selectedCbtDetail.subjectId
+                  );
+
+                  return (
+                    <div className="space-y-3">
+                      {examQuestions.map((q, idx) => {
+                        const studentChoice = selectedCbtDetail.answersSnapshot?.[idx];
+                        const isRight = studentChoice === q.correct;
+                        const isSkipped = studentChoice === undefined;
+
+                        return (
+                          <div
+                            key={q.id || idx}
+                            className={`p-4 rounded-2xl border text-xs space-y-2.5 ${
+                              isRight
+                                ? 'bg-emerald-50/50 border-emerald-200'
+                                : isSkipped
+                                ? 'bg-slate-50 border-slate-200'
+                                : 'bg-rose-50/50 border-rose-200'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between font-bold">
+                              <span className="flex items-center gap-2">
+                                <span className="w-5 h-5 rounded-md bg-white border flex items-center justify-center font-mono text-slate-800">
+                                  {idx + 1}
+                                </span>
+                                <span className="text-slate-800">{q.subject}</span>
+                              </span>
+
+                              <span
+                                className={`px-2 py-0.5 rounded-md font-bold text-[10px] ${
+                                  isRight
+                                    ? 'bg-emerald-600 text-white'
+                                    : isSkipped
+                                    ? 'bg-slate-300 text-slate-700'
+                                    : 'bg-rose-600 text-white'
+                                }`}
+                              >
+                                {isRight ? '✓ Jawaban Benar' : isSkipped ? 'Tidak Dijawab' : '✗ Jawaban Salah'}
+                              </span>
+                            </div>
+
+                            {q.arabicPrompt && (
+                              <div className="p-2.5 bg-white/80 rounded-xl border border-emerald-100 text-center font-['Amiri',serif] text-xl text-emerald-950">
+                                {q.arabicPrompt}
+                              </div>
+                            )}
+
+                            <p className="font-semibold text-slate-900">{q.q}</p>
+
+                            <div className="space-y-1 pl-2 border-l-2 border-slate-300">
+                              <div className={isRight ? 'text-emerald-900' : 'text-rose-900'}>
+                                Jawaban Santri:{' '}
+                                <strong>
+                                  {studentChoice !== undefined
+                                    ? `${String.fromCharCode(65 + studentChoice)}. ${q.options[studentChoice]}`
+                                    : 'Tidak dijawab'}
+                                </strong>
+                              </div>
+                              <div className="text-emerald-800">
+                                Kunci Jawaban:{' '}
+                                <strong>
+                                  {String.fromCharCode(65 + q.correct)}. {q.options[q.correct]}
+                                </strong>
+                              </div>
+                            </div>
+
+                            <div className="p-2.5 bg-white rounded-xl border border-slate-200 text-slate-700 text-[11px] leading-relaxed">
+                              <strong>Pembahasan Guru:</strong> {q.explanation}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+              </div>
+
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 bg-white border-t border-slate-200 flex items-center justify-between shrink-0">
+              <button
+                onClick={() => {
+                  soundEngine.playClick();
+                  window.print();
+                }}
+                className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-colors"
+              >
+                <Printer className="w-3.5 h-3.5" />
+                <span>Cetak Lembar Evaluasi Ini</span>
+              </button>
+
+              <button
+                onClick={() => setSelectedCbtDetail(null)}
+                className="px-5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold cursor-pointer"
+              >
+                Tutup
+              </button>
+            </div>
+
+          </div>
+        </div>
       )}
     </div>
   );

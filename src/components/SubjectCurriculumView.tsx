@@ -595,6 +595,7 @@ export const SubjectCurriculumView: React.FC<SubjectCurriculumViewProps> = ({
         <MaterialReaderModal
           material={selectedModule}
           isOpen={Boolean(selectedModule)}
+          studentGrade={studentGrade}
           onClose={() => setSelectedModule(null)}
           onComplete={() => {
             setSelectedModule(null);
